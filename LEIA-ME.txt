@@ -47,3 +47,12 @@ index.html — estrutura
 styles.css — visual
 app.js — operações
 config.js — conexão pública Supabase
+
+
+ATUALIZAÇÃO V0.2 — RECUPERAÇÃO DE SENHA
+1. Substitua os cinco arquivos na raiz do repositório GitHub Pages.
+2. No Supabase > Authentication > URL Configuration, configure Site URL e Redirect URLs para https://talisonsagazpn-hash.github.io/rotafacil-painel/
+3. Na tela de login, digite seu e-mail e clique Esqueci minha senha.
+4. Abra o e-mail mais recente e escolha sua nova senha no painel.
+5. Não utilize links de recuperação antigos ou já consumidos.
+6. O link depende da configuração de URLs permitidas e do serviço de e-mail do Supabase.
