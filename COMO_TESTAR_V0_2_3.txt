@@ -1,0 +1,35 @@
+ROTA FÁCIL PAINEL V0.2.3 — CADASTRO DE MOTOBOYS
+
+O QUE FOI IMPLEMENTADO
+- Em Motoboys: cadastrar pelo nome e gerar código temporário (24h).
+- Gerar novo código para motoboy existente, invalidando o anterior.
+- Operações salvas automaticamente no Supabase, sem SQL por cadastro.
+- Autorização verificada no servidor: apenas proprietário da empresa.
+- Código armazenado como hash, não acessível por SELECT público.
+- Preservadas as funções anteriores, inclusive mapa.
+
+INSTALAÇÃO INICIAL (UMA VEZ)
+1. Revise e execute 01_CONFIGURAR_CADASTRO_MOTOBOY.sql no SQL Editor do projeto.
+   ATENÇÃO: confira que public.motoboys aceita INSERT com empresa_id,nome,ativo.
+2. No GitHub Pages, substitua index.html, app.js e styles.css.
+3. Aguarde publicação e pressione Ctrl+F5.
+
+TESTE NO PAINEL
+1. Entre com o proprietário da Empresa Piloto.
+2. Abra Motoboys. Digite nome de TESTE e clique Cadastrar motoboy.
+3. Deve aparecer um código e o novo motoboy na lista.
+4. Clique Copiar e guarde o código. Não publique esse código.
+5. Clique Gerar novo código no cadastro: código anterior deve ser invalidado.
+6. Confira no Supabase que o cadastro existe (somente no teste técnico).
+7. Confira que Mapa ainda abre e Motoboy Teste continua visível.
+8. Se houver erro de coluna, copie a mensagem antes de repetir o cadastro.
+
+AINDA NÃO IMPLEMENTADO
+- Android aceitar código e criar senha.
+- Vínculo exclusivo ao aparelho e desbloqueio de troca de celular.
+- Login individual do motoboy e GPS automático baseado nesse login.
+- Gestão MASTER de múltiplas empresas.
+
+SEGURANÇA
+Não use service_role no navegador. A função verifica empresa e papel no banco.
+A implantação depende da estrutura atual da tabela motoboys, não validada remotamente.

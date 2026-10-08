@@ -4,3 +4,5 @@
 #forgotPassword:hover{text-decoration:underline;}
 
 .map-notice{padding:24px;color:#dce8ef;text-align:center}.leaflet-container{font-family:inherit}
+
+.driver-form{display:flex;align-items:end;gap:12px;flex-wrap:wrap}.driver-form label{flex:1;min-width:200px}.driver-form button{margin-bottom:7px}.code-result{margin:18px 0;padding:16px;border:1px solid #39785a;border-radius:10px;background:#102d23}.code-line{display:flex;align-items:center;gap:12px;margin-top:12px;flex-wrap:wrap}.code-line code{font-size:22px;letter-spacing:2px;user-select:all;color:#7ef6ae}.code-line button{width:auto}
