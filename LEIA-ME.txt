@@ -56,3 +56,12 @@ ATUALIZAÇÃO V0.2 — RECUPERAÇÃO DE SENHA
 4. Abra o e-mail mais recente e escolha sua nova senha no painel.
 5. Não utilize links de recuperação antigos ou já consumidos.
 6. O link depende da configuração de URLs permitidas e do serviço de e-mail do Supabase.
+
+
+V0.2.1 - DIAGNOSTICO DE ACESSO
+- Verificacao da sessao com auth.getUser().
+- Consultas independentes de membros e empresas, evitando falha de relacionamento embutido.
+- Mensagens especificas para erro de consulta, vinculo ausente e empresa invisivel.
+- Nao altera politicas RLS, usuarios, senhas nem estrutura do banco.
+- Se aparecer erro de permissao, envie o texto exato exibido no login.
+- Atualize os cinco arquivos no GitHub Pages e aguarde a publicacao.
