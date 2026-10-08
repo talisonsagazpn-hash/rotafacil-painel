@@ -65,3 +65,11 @@ V0.2.1 - DIAGNOSTICO DE ACESSO
 - Nao altera politicas RLS, usuarios, senhas nem estrutura do banco.
 - Se aparecer erro de permissao, envie o texto exato exibido no login.
 - Atualize os cinco arquivos no GitHub Pages e aguarde a publicacao.
+
+
+V0.2.2 — CORREÇÃO DO MAPA
+- Incluído leaflet.js (antes apenas leaflet.css era carregado).
+- Mapa abre mesmo sem GPS ativo; motoboys com posição antiga aparecem como desligados/desatualizados.
+- Publicar index.html, app.js e styles.css no GitHub Pages (config.js pode permanecer igual).
+- Se não aparecer: Ctrl+F5 e conferir bloqueio do domínio unpkg.com.
+- Não é necessário alterar SQL nem reinstalar Android para esta correção.

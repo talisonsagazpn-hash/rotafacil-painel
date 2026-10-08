@@ -2,3 +2,5 @@
 
 #forgotPassword {align-self:flex-start;margin:0 0 8px;padding:0;background:transparent;border:0;color:#00d777;cursor:pointer;font-size:13px;text-align:left;}
 #forgotPassword:hover{text-decoration:underline;}
+
+.map-notice{padding:24px;color:#dce8ef;text-align:center}.leaflet-container{font-family:inherit}
