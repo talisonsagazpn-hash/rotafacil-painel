@@ -1,0 +1,49 @@
+ROTA FÁCIL — PAINEL WEB V0.1 (MVP)
+
+REQUISITOS
+- Internet (CDNs Supabase JS e Leaflet / mapas OpenStreetMap)
+- Supabase configurado com SQL inicial da conversa, Empresa Piloto, Loja Piloto, usuário proprietário e Motoboy Teste.
+- Navegador moderno.
+
+COMO INICIAR NO WINDOWS
+1. Extraia o ZIP.
+2. Abra a pasta extraída.
+3. Na barra de endereço do Explorador, digite cmd e pressione Enter.
+4. No terminal, execute: py -m http.server 8080
+5. No navegador, acesse: http://localhost:8080
+6. Entre com o e-mail e a senha cadastrados no Supabase Authentication.
+
+Se o comando py não funcionar, instale Python 3 ou use um servidor web estático de sua preferência.
+
+FUNCIONALIDADES
+- Login Supabase Auth
+- Consulta isolada da empresa do usuário autenticado
+- Dashboard e indicadores
+- Cadastro manual de pedidos
+- Filtro/busca de pedidos e cancelamento de pendentes
+- Montagem e envio de rota ao banco (rotas + rota_paradas + status em_rota)
+- Lista de motoboys e rotas
+- Mapa OpenStreetMap/Leaflet com posições enviadas à tabela localizacoes_motoboy
+- Atualização periódica a cada 10 segundos (polling, não Supabase Realtime)
+
+LIMITAÇÕES IMPORTANTES
+- Ainda NÃO há Android conectado: a rota fica salva na nuvem, mas NÃO aparece no celular até desenvolvermos essa parte.
+- Ainda NÃO há GPS real transmitido pelo Android.
+- O mapa só mostra posições se algum cliente autenticado inserir/atualizar localizacoes_motoboy.
+- Para rastrear durante o trabalho, o Android deverá pedir permissões e consentimento explícito.
+- O painel não possui geocodificação automática de endereços; coordenadas de pedidos são opcionais.
+- A criação de rota usa múltiplas requisições, sem transação atômica: em erro intermediário, pode sobrar rota parcial; verificar antes de reenviar. Futuramente implementar RPC transacional.
+- Ainda não há hospedagem pública, deploy, gestão MASTER, edição/reordenação de paradas ou importação WhatsApp no PC.
+- Esta é uma primeira versão funcional do painel; ainda requer testes com login e banco real.
+
+SEGURANÇA
+- config.js contém APENAS a chave publishable pública e a URL do projeto.
+- Nunca colocar chave secret/service_role no navegador.
+- As permissões de acesso são aplicadas no Supabase via RLS, não apenas na interface.
+- Dados pessoais de clientes e localização devem ter tratamento adequado à LGPD.
+
+ARQUIVOS
+index.html — estrutura
+styles.css — visual
+app.js — operações
+config.js — conexão pública Supabase
