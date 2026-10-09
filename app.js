@@ -104,12 +104,12 @@ function renderMap(){
   let routeHtml='';
   for(const r of routes){
    const stops=state.paradas.filter(p=>p.rota_id===r.id).sort((a,b)=>Number(a.ordem)-Number(b.ordem));
-   const points=stops.map(st=>state.pedidos.find(p=>p.id===st.pedido_id)).filter(p=>p&&Number.isFinite(Number(p.latitude))&&Number.isFinite(Number(p.longitude))&&p.latitude!=null&&p.longitude!=null&&Math.abs(Number(p.latitude))<=90&&Math.abs(Number(p.longitude))<=180).map(p=>[Number(p.latitude),Number(p.longitude)]);
+   const points=stops.map(st=>({stop:st,p:state.pedidos.find(p=>p.id===st.pedido_id)})).filter(x=>x.p&&x.p.latitude!=null&&x.p.longitude!=null&&Number.isFinite(Number(x.p.latitude))&&Number.isFinite(Number(x.p.longitude))&&Math.abs(Number(x.p.latitude))<=90&&Math.abs(Number(x.p.longitude))<=180).map(x=>({coords:[Number(x.p.latitude),Number(x.p.longitude)],ordem:Number(x.stop.ordem),pedido:x.p}));
    if(points.length){
-    const coords=valid?[[Number(loc.latitude),Number(loc.longitude)],...points]:points;
+    const coords=valid?[[Number(loc.latitude),Number(loc.longitude)],...points.map(p=>p.coords)]:points.map(p=>p.coords);
     const line=L.polyline(coords,{color:'#1685e8',weight:4,opacity:.85,dashArray:'9 7'}).addTo(state.map);
-    state.routeLines.push(line);bounds.push(...points);
-    points.forEach((pt,i)=>{const marker=L.circleMarker(pt,{radius:10,color:'#fff',weight:2,fillColor:'#1685e8',fillOpacity:1}).addTo(state.map).bindTooltip(`Parada ${i+1}`);state.routeLines.push(marker)});
+    state.routeLines.push(line);bounds.push(...points.map(p=>p.coords));
+    points.forEach(pt=>{const marker=L.marker(pt.coords,{icon:L.divIcon({className:"route-number-icon",html:`<span>${pt.ordem}</span>`,iconSize:[30,30],iconAnchor:[15,15]})}).addTo(state.map).bindPopup(`<b>Ponto ${pt.ordem}</b><br>Pedido #${esc(pt.pedido.numero||"—")}<br>${esc(pt.pedido.cliente_nome||"")}<br>${esc(pt.pedido.endereco||"")}`);state.routeLines.push(marker)});
     routeHtml+=`<small>Rota #${esc(r.id.slice(0,8))}: ${points.length} parada(s) no mapa · linha indicativa, não navegação viária</small>`;
    }else routeHtml+=`<small>Rota #${esc(r.id.slice(0,8))}: sem coordenadas das paradas</small>`;
   }
@@ -123,6 +123,44 @@ function page(name){if(name==='mapa'&&state.page!=='mapa')state.autoFit=true;sta
 async function saveOrder(ev){ev.preventDefault();const payload={empresa_id:state.empresa.id,loja_id:$('orderStore').value,numero:$('orderNumber').value.trim()||null,plataforma:$('orderPlatform').value,cliente_nome:$('orderClient').value.trim(),endereco:$('orderAddress').value.trim(),complemento:$('orderComplement').value.trim()||null,referencia:$('orderReference').value.trim()||null,localizador:$('orderLocator').value.trim()||null,latitude:$('orderLat').value?Number($('orderLat').value):null,longitude:$('orderLng').value?Number($('orderLng').value):null};const {error}=await sb.from('pedidos').insert(payload);if(error)return toast(errorText(error),true);$('orderDialog').close();$('orderForm').reset();toast('Pedido cadastrado com sucesso!');await fetchAll()}
 async function sendRoute(){const ids=[...state.selected],driver=$('routeDriver').value,store=$('routeStore').value;if(!driver||!store||!ids.length)return toast('Selecione a loja, o motoboy e pelo menos um pedido.',true);const button=$('sendRoute');button.disabled=true;let created=null;try{const {data,error}=await sb.from('rotas').insert({empresa_id:state.empresa.id,loja_id:store,motoboy_id:driver,status:'enviada',enviada_em:new Date().toISOString()}).select('id').single();if(error)throw error;created=data.id;const stops=ids.map((id,i)=>({empresa_id:state.empresa.id,rota_id:created,pedido_id:id,ordem:i+1}));const inserted=await sb.from('rota_paradas').insert(stops);if(inserted.error)throw inserted.error;const updated=await sb.from('pedidos').update({status:'em_rota',atualizado_em:new Date().toISOString()}).in('id',ids).eq('empresa_id',state.empresa.id).eq('status','pendente').select('id');if(updated.error)throw updated.error;if(updated.data.length!==ids.length)throw new Error('Nem todos os pedidos puderam ser atualizados. Verifique a rota antes de reenviar.');state.selected.clear();toast('Rota registrada na nuvem! O envio ao celular depende da integração Android.');await fetchAll()}catch(e){toast(`Erro ao enviar rota: ${errorText(e)}${created?' (rota criada parcialmente; confira antes de tentar novamente)':''}`,true);await fetchAll()}finally{button.disabled=false}}
 
+
+// Importação por texto: revisão obrigatória antes de salvar no Supabase.
+let waDraft=[];
+function waValue(text, labels){
+ for(const label of labels){const safe=label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');const re=new RegExp('(?:^|\\n)\\s*(?:'+safe+')\\s*[:\\-]\\s*(.+)','im');const m=text.match(re);if(m)return m[1].trim()}
+ return '';
+}
+function parseWa(text){
+ const cleaned=text.replace(/\r/g,'').trim();if(!cleaned)return [];
+ const blocks=cleaned.split(/\n\s*(?:[-=]{3,}|\*{3,})\s*\n|\n(?=(?:Pedido|N[úu]mero do pedido|Nº pedido)\s*[:#-])/i).map(x=>x.trim()).filter(Boolean);
+ return blocks.map((block,i)=>{
+  const get=(...names)=>waValue(block,names);
+  let numero=get('Pedido','Número do pedido','Numero do pedido','Nº pedido','N° pedido');
+  if(!numero){const m=block.match(/(?:pedido|order)\s*#\s*([\w-]+)/i);if(m)numero=m[1]}
+  const cliente=get('Cliente','Nome do cliente','Nome');
+  const endereco=get('Endereço de entrega','Endereco de entrega','Endereço','Endereco','Rua','Logradouro');
+  const bairro=get('Bairro');const cidade=get('Cidade');
+  const latitude=get('Latitude','Lat'),longitude=get('Longitude','Lng','Lon');
+  const lat=latitude?Number(latitude.replace(',','.')):null,lng=longitude?Number(longitude.replace(',','.')):null;
+  return {numero,cliente_nome:cliente,endereco:[endereco,bairro,cidade].filter(Boolean).join(', '),complemento:get('Complemento','Apto','Apartamento'),referencia:get('Referência','Referencia','Ponto de referência'),localizador:get('Localizador','Código localizador','Codigo localizador'),plataforma:/99\s*food|99food/i.test(block)?'99food':/ifood/i.test(block)?'ifood':'whatsapp',latitude:Number.isFinite(lat)&&lat!==null&&Math.abs(lat)<=90?lat:null,longitude:Number.isFinite(lng)&&lng!==null&&Math.abs(lng)<=180?lng:null,indice:i+1};
+ });
+}
+function previewWa(){waDraft=parseWa($('waText').value);$('waPreview').innerHTML=waDraft.map((x,i)=>`<div class="wa-item"><b>Pedido ${i+1}</b><label>Número<input data-wa="${i}:numero" value="${esc(x.numero)}"></label><label>Cliente<input data-wa="${i}:cliente_nome" value="${esc(x.cliente_nome)}"></label><label>Endereço completo<input data-wa="${i}:endereco" value="${esc(x.endereco)}"></label><label>Complemento<input data-wa="${i}:complemento" value="${esc(x.complemento)}"></label><label>Referência<input data-wa="${i}:referencia" value="${esc(x.referencia)}"></label><label>Localizador<input data-wa="${i}:localizador" value="${esc(x.localizador)}"></label><div class="two"><label>Latitude<input data-wa="${i}:latitude" value="${esc(x.latitude??'')}"></label><label>Longitude<input data-wa="${i}:longitude" value="${esc(x.longitude??'')}"></label></div><small>${x.latitude!==null&&x.longitude!==null?'📍 Coordenadas presentes':'⚠ Sem coordenadas: ponto não aparecerá no mapa'}</small></div>`).join('')||'<p class="muted">Cole a mensagem para conferir.</p>';$('waSaveBtn').disabled=!waDraft.length}
+$('waPreviewBtn').onclick=previewWa;
+$('waPreview').addEventListener('input',e=>{const key=e.target.dataset.wa;if(!key)return;const [index,field]=key.split(':');waDraft[Number(index)][field]=e.target.value});
+$('waSaveBtn').onclick=async()=>{
+ const store=$('routeStore').value;if(!store)return toast('Escolha a loja primeiro.',true);
+ if(!waDraft.length)return toast('Confira uma mensagem primeiro.',true);
+ const rows=[];
+ for(const x of waDraft){if(!x.cliente_nome.trim()||!x.endereco.trim())return toast('Preencha cliente e endereço de todos os pedidos.',true);
+ const lat=x.latitude===''?null:Number(String(x.latitude).replace(',','.')),lng=x.longitude===''?null:Number(String(x.longitude).replace(',','.'));
+ if((lat!==null&&!Number.isFinite(lat))||(lng!==null&&!Number.isFinite(lng)))return toast('Latitude ou longitude inválida.',true);
+ rows.push({empresa_id:state.empresa.id,loja_id:store,numero:x.numero.trim()||null,plataforma:x.plataforma,cliente_nome:x.cliente_nome.trim(),endereco:x.endereco.trim(),complemento:x.complemento.trim()||null,referencia:x.referencia.trim()||null,localizador:x.localizador.trim()||null,latitude:lat,longitude:lng,status:'pendente'});
+ }
+ const btn=$('waSaveBtn');btn.disabled=true;
+ try{const {error}=await sb.from('pedidos').insert(rows);if(error)throw error;toast(`${rows.length} pedido(s) cadastrado(s). Selecione para despachar.`);waDraft=[];$('waText').value='';$('waPreview').innerHTML='';await fetchAll()}
+ catch(e){toast('Erro ao importar: '+errorText(e),true)}finally{btn.disabled=!waDraft.length}
+};
 // A geração ocorre exclusivamente em função SQL autorizada, nunca no navegador.
 function showDriverCode(code){$('driverCode').textContent=code;$('driverCodeResult').classList.remove('hidden')}
 $('driverForm').addEventListener('submit',async ev=>{
