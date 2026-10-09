@@ -1,0 +1,65 @@
+-- Executar uma única vez no SQL Editor do Supabase.
+-- Exclusão permanente, limitada a pedidos pendentes da loja e empresa autorizadas.
+CREATE OR REPLACE FUNCTION public.rota_excluir_pedidos_disponiveis(
+ p_empresa_id uuid,
+ p_loja_id uuid,
+ p_pedido_ids uuid[]
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+ v_count integer;
+ v_deleted integer;
+BEGIN
+ IF auth.uid() IS NULL OR NOT EXISTS (
+  SELECT 1 FROM public.membros m
+  WHERE m.usuario_id = auth.uid()
+    AND m.empresa_id = p_empresa_id
+    AND m.ativo = true
+    AND m.papel IN ('proprietario','gerente','atendente')
+ ) THEN
+  RAISE EXCEPTION 'Sem permissao para excluir pedidos';
+ END IF;
+ IF p_pedido_ids IS NULL OR cardinality(p_pedido_ids)=0 OR cardinality(p_pedido_ids)>100 THEN
+  RAISE EXCEPTION 'Selecione entre 1 e 100 pedidos';
+ END IF;
+ SELECT count(DISTINCT x) INTO v_count FROM unnest(p_pedido_ids) AS x;
+ IF v_count <> cardinality(p_pedido_ids) THEN
+  RAISE EXCEPTION 'IDs duplicados na selecao';
+ END IF;
+ -- Trava os pedidos para impedir que sejam despachados simultaneamente.
+ PERFORM 1 FROM public.pedidos p
+ WHERE p.id = ANY(p_pedido_ids)
+ FOR UPDATE;
+ SELECT count(*) INTO v_count
+ FROM public.pedidos p
+ WHERE p.id = ANY(p_pedido_ids)
+   AND p.empresa_id = p_empresa_id
+   AND p.loja_id = p_loja_id
+   AND p.status = 'pendente'
+   AND NOT EXISTS (
+    SELECT 1 FROM public.rota_paradas rp WHERE rp.pedido_id = p.id
+   );
+ IF v_count <> cardinality(p_pedido_ids) THEN
+  RAISE EXCEPTION 'Um ou mais pedidos nao estao disponiveis ou ja pertencem a uma rota';
+ END IF;
+ DELETE FROM public.pedidos p
+ WHERE p.id = ANY(p_pedido_ids)
+   AND p.empresa_id = p_empresa_id
+   AND p.loja_id = p_loja_id
+   AND p.status = 'pendente'
+   AND NOT EXISTS (
+    SELECT 1 FROM public.rota_paradas rp WHERE rp.pedido_id = p.id
+   );
+ GET DIAGNOSTICS v_deleted = ROW_COUNT;
+ IF v_deleted <> cardinality(p_pedido_ids) THEN
+  RAISE EXCEPTION 'Exclusao incompleta; operacao revertida';
+ END IF;
+ RETURN jsonb_build_object('excluidos',v_deleted);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.rota_excluir_pedidos_disponiveis(uuid,uuid,uuid[]) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.rota_excluir_pedidos_disponiveis(uuid,uuid,uuid[]) TO authenticated;

@@ -1,0 +1,1 @@
+V0.3.7: removidos da tela inicial os atalhos Montar rota e Acompanhar mapa. O cadastro manual e a Central de Entregas permanecem. Nenhum registro foi apagado automaticamente. A limpeza de dados de teste deve ser executada separadamente no Supabase, com escopo por empresa e revisao previa.
