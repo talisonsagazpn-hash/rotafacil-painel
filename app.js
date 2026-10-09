@@ -218,18 +218,29 @@ function parseWa(text){
   const coords=coordBySeq.get(entry.seq)||waCoordinates(block);
   const lat=coords[0],lon=coords[1];
   const is99=/food-b-h5\.99app\.com|99app\.com/i.test(block);
-  return {numero,cliente_nome:cliente,endereco,complemento:get('Complemento'),referencia:get('Ponto de referência','Referência'),localizador:get('Localizador'),plataforma:is99?'99food':'ifood',latitude:lat,longitude:lon,indice:entry.seq};
+  return {numero,cliente_nome:cliente,endereco,complemento:get('Complemento'),referencia:get('Ponto de referência','Referência'),localizador:get('Localizador'),plataforma:is99?'99food':'ifood',latitude:lat,longitude:lon,...waPayment(block),indice:entry.seq};
  }).filter(p=>p.numero||p.localizador||p.endereco);
+}
+function waPayment(block){
+ const clean=block.replace(/\*/g,'').replace(/`/g,'');
+ const method=(clean.match(/^\s*Forma de pagamento\s*:\s*(.+)$/im)||[])[1]?.trim()||'';
+ const option=(clean.match(/^\s*Opção de pagamento\s*:\s*(.+)$/im)||[])[1]?.trim()||'';
+ const paid=/pagamento online j[aá] realizado|pagamento j[aá] realizado|j[aá] pago|pago online/i.test(clean);
+ const charge=/pagamento na entrega|pagar na entrega|cobrar na entrega|receber na entrega|pagamento pendente|a cobrar/i.test(clean) || (!paid && /\b(dinheiro|maquininha|cart[aã]o na entrega|pix na entrega)\b/i.test(method));
+ const amounts=[...clean.matchAll(/^\s*(?:R\$\s*)?([\d.]+,\d{2})\s*Total\s*$/gim)];
+ const total=amounts.length?Number(amounts[amounts.length-1][1].replace(/\./g,'').replace(',','.')):null;
+ return {pagamento_status:paid?'pago':charge?'cobrar':'nao_informado',pagamento_forma:[method,option].filter(Boolean).join(' • '),pagamento_valor:total};
 }
 function previewWa(){
  try{
   waDraft=parseWa($('waText').value);
-  $('waPreview').innerHTML=waDraft.map((x,i)=>`<div class="wa-item"><b>Ponto ${x.indice} — Pedido #${esc(x.numero)}</b><label>Cliente<input data-wa="${i}:cliente_nome" value="${esc(x.cliente_nome)}"></label><label>Endereço<input data-wa="${i}:endereco" value="${esc(x.endereco)}"></label><label>Complemento<input data-wa="${i}:complemento" value="${esc(x.complemento)}"></label><label>Referência<input data-wa="${i}:referencia" value="${esc(x.referencia)}"></label><label>Localizador<input data-wa="${i}:localizador" value="${esc(x.localizador)}"></label><div class="two"><label>Latitude<input data-wa="${i}:latitude" value="${esc(x.latitude??'')}"></label><label>Longitude<input data-wa="${i}:longitude" value="${esc(x.longitude??'')}"></label></div><small>${x.latitude!=null&&x.longitude!=null?'📍 Coordenadas presentes':'⚠ Sem coordenadas; informe manualmente para mostrar no mapa'}</small></div>`).join('')||'<p class="muted">Nenhum pedido reconhecido. Confira se a mensagem contém Pedido: #1 ou 1º Pedido (#27).</p>';
+  $('waPreview').innerHTML=waDraft.map((x,i)=>`<div class="wa-item"><b>Ponto ${x.indice} — Pedido #${esc(x.numero)}</b><label>Cliente<input data-wa="${i}:cliente_nome" value="${esc(x.cliente_nome)}"></label><label>Endereço<input data-wa="${i}:endereco" value="${esc(x.endereco)}"></label><label>Complemento<input data-wa="${i}:complemento" value="${esc(x.complemento)}"></label><label>Referência<input data-wa="${i}:referencia" value="${esc(x.referencia)}"></label><label>Localizador<input data-wa="${i}:localizador" value="${esc(x.localizador)}"></label><div class="two"><label>Latitude<input data-wa="${i}:latitude" value="${esc(x.latitude??'')}"></label><label>Longitude<input data-wa="${i}:longitude" value="${esc(x.longitude??'')}"></label></div><label>Pagamento<select data-wa="${i}:pagamento_status"><option value="pago" ${x.pagamento_status==='pago'?'selected':''}>Pago online</option><option value="cobrar" ${x.pagamento_status==='cobrar'?'selected':''}>Cobrar na entrega</option><option value="nao_informado" ${x.pagamento_status==='nao_informado'?'selected':''}>Não informado</option></select></label><label>Forma de pagamento<input data-wa="${i}:pagamento_forma" value="${esc(x.pagamento_forma)}"></label><label>Total do pedido (R$)<input type="number" min="0" step="0.01" data-wa="${i}:pagamento_valor" value="${esc(x.pagamento_valor??'')}"></label><small>O total do pedido não é o valor recebido pelo motoboy.</small><small>${x.latitude!=null&&x.longitude!=null?'📍 Coordenadas presentes':'⚠ Sem coordenadas; informe manualmente para mostrar no mapa'}</small></div>`).join('')||'<p class="muted">Nenhum pedido reconhecido. Confira se a mensagem contém Pedido: #1 ou 1º Pedido (#27).</p>';
   $('waSaveBtn').disabled=!waDraft.length;
   toast(waDraft.length?`${waDraft.length} pedido(s) reconhecido(s). Confira e salve.`:'Nenhum pedido reconhecido.',!waDraft.length);
  }catch(e){waDraft=[];$('waSaveBtn').disabled=true;$('waPreview').textContent='Erro ao ler mensagem: '+errorText(e);toast(errorText(e),true);}
 }
 $('waPreviewBtn').onclick=previewWa;
+$('waPreview').addEventListener('change',e=>{const key=e.target.dataset.wa;if(!key)return;const [index,field]=key.split(':');waDraft[Number(index)][field]=e.target.value});
 $('waPreview').addEventListener('input',e=>{const key=e.target.dataset.wa;if(!key)return;const [index,field]=key.split(':');waDraft[Number(index)][field]=e.target.value});
 $('waSaveBtn').onclick=async()=>{
  const store=$('waStore').value;if(!store)return toast('Escolha a loja primeiro.',true);
@@ -238,7 +249,7 @@ $('waSaveBtn').onclick=async()=>{
  for(const x of waDraft){if(!x.cliente_nome.trim()||!x.endereco.trim())return toast('Preencha cliente e endereço de todos os pedidos.',true);
  const lat=x.latitude===''?null:Number(String(x.latitude).replace(',','.')),lng=x.longitude===''?null:Number(String(x.longitude).replace(',','.'));
  if((lat!==null&&!Number.isFinite(lat))||(lng!==null&&!Number.isFinite(lng)))return toast('Latitude ou longitude inválida.',true);
- rows.push({empresa_id:state.empresa.id,loja_id:store,numero:x.numero.trim()||null,plataforma:x.plataforma,cliente_nome:x.cliente_nome.trim(),endereco:x.endereco.trim(),complemento:x.complemento.trim()||null,referencia:x.referencia.trim()||null,localizador:x.localizador.trim()||null,latitude:lat,longitude:lng,status:'pendente'});
+ rows.push({empresa_id:state.empresa.id,loja_id:store,numero:x.numero.trim()||null,plataforma:x.plataforma,cliente_nome:x.cliente_nome.trim(),endereco:x.endereco.trim(),complemento:x.complemento.trim()||null,referencia:x.referencia.trim()||null,localizador:x.localizador.trim()||null,latitude:lat,longitude:lng,status:'pendente',pagamento_status:x.pagamento_status,pagamento_forma:x.pagamento_forma||null,pagamento_valor:x.pagamento_valor===''?null:x.pagamento_valor});
  }
  const btn=$('waSaveBtn');btn.disabled=true;
  try{const {data,error}=await sb.from('pedidos').insert(rows).select('id');if(error)throw error;waDraft=[];$('waText').value='';$('waPreview').innerHTML='';await fetchAll();if(data?.length===rows.length){$('routeStore').dataset.selected=store;state.selected=new Set(data.map(p=>p.id));page('rotas');toast(`${rows.length} pedido(s) criados no Supabase e selecionados para despacho. Escolha o motoboy e confira a ordem.`)}else toast(`${rows.length} pedido(s) cadastrados. Abra Rotas e selecione-os para despachar.`)}
