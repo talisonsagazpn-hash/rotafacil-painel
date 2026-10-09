@@ -1,0 +1,22 @@
+ROTA FÁCIL — PAINEL V0.2.4
+
+ATUALIZAÇÃO NO GITHUB
+1. Faça backup dos arquivos atuais do repositório.
+2. Envie index.html, app.js e styles.css deste ZIP para a raiz do repositório rotafacil-painel, substituindo os antigos.
+3. Clique em Commit changes. Aguarde o GitHub Pages publicar.
+4. Abra o painel e pressione Ctrl+F5.
+
+COMO TESTAR
+1. Abra Motoboys. Confira a moto no lugar do desenho antigo e o status online/offline.
+2. Com o Android enviando GPS, aguarde até 10 segundos e veja o status online.
+3. Clique em Ver no mapa no motoboy online. O mapa deve mostrar só ele e focar sua posição.
+4. Clique em Ver todos os motoboys para restaurar os demais marcadores.
+5. Desligue o compartilhamento no Android; após até 2 minutos o motoboy deve passar a offline.
+6. Se houver rota enviada ao motoboy com pedidos contendo latitude/longitude, o mapa mostra os pontos e uma linha tracejada indicativa.
+
+LIMITAÇÕES
+- Linha tracejada conecta posições em linha reta; NÃO é rota calculada pelas ruas.
+- Sem coordenadas nos pedidos, não há traçado de paradas.
+- Ainda não existe histórico do caminho percorrido, nem alerta de desvio.
+- A atualização é por consulta a cada 10 segundos, não por canal Realtime.
+- Não requer SQL nem atualização do aplicativo Android.
