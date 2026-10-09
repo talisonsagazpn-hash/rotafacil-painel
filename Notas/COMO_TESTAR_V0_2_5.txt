@@ -1,0 +1,6 @@
+Rota Facil Painel V0.2.5
+1. Publique index.html, app.js, styles.css, config.js e pasta Notas no GitHub Pages.
+2. Abra Motoboys e confira Ultimo GPS: ha X segundos.
+3. Com Android V2.9.6.16, deixe o telefone parado, em segundo plano, usando dados moveis.
+4. Confira online ate 45 s, sinal instavel entre 45 e 90 s e offline depois de 90 s sem GPS.
+5. Rotas ainda nao sao sincronizadas automaticamente ao Android.
