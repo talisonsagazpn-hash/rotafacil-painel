@@ -127,25 +127,63 @@ async function sendRoute(){const ids=[...state.selected],driver=$('routeDriver')
 // Importação por texto: revisão obrigatória antes de salvar no Supabase.
 let waDraft=[];
 function waValue(text, labels){
- for(const label of labels){const safe=label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');const re=new RegExp('(?:^|\\n)\\s*(?:'+safe+')\\s*[:\\-]\\s*(.+)','im');const m=text.match(re);if(m)return m[1].trim()}
+ for(const label of labels){
+  const safe=label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  const re=new RegExp('(?:^|\\n)\\s*\\*?'+safe+'\\*?\\s*[:\\-]\\s*\\*?([^\\n]+)','im');
+  const m=text.match(re);if(m)return m[1].trim().replace(/^\*|\*$/g,'').trim();
+ }
  return '';
 }
-function parseWa(text){
- const cleaned=text.replace(/\r/g,'').trim();if(!cleaned)return [];
- const blocks=cleaned.split(/\n\s*(?:[-=]{3,}|\*{3,})\s*\n|\n(?=(?:Pedido|N[úu]mero do pedido|Nº pedido)\s*[:#-])/i).map(x=>x.trim()).filter(Boolean);
- return blocks.map((block,i)=>{
-  const get=(...names)=>waValue(block,names);
-  let numero=get('Pedido','Número do pedido','Numero do pedido','Nº pedido','N° pedido');
-  if(!numero){const m=block.match(/(?:pedido|order)\s*#\s*([\w-]+)/i);if(m)numero=m[1]}
-  const cliente=get('Cliente','Nome do cliente','Nome');
-  const endereco=get('Endereço de entrega','Endereco de entrega','Endereço','Endereco','Rua','Logradouro');
-  const bairro=get('Bairro');const cidade=get('Cidade');
-  const latitude=get('Latitude','Lat'),longitude=get('Longitude','Lng','Lon');
-  const lat=latitude?Number(latitude.replace(',','.')):null,lng=longitude?Number(longitude.replace(',','.')):null;
-  return {numero,cliente_nome:cliente,endereco:[endereco,bairro,cidade].filter(Boolean).join(', '),complemento:get('Complemento','Apto','Apartamento'),referencia:get('Referência','Referencia','Ponto de referência'),localizador:get('Localizador','Código localizador','Codigo localizador'),plataforma:/99\s*food|99food/i.test(block)?'99food':/ifood/i.test(block)?'ifood':'whatsapp',latitude:Number.isFinite(lat)&&lat!==null&&Math.abs(lat)<=90?lat:null,longitude:Number.isFinite(lng)&&lng!==null&&Math.abs(lng)<=180?lng:null,indice:i+1};
- });
+function waCoordinates(block){
+ // Primeiro link de coordenadas do Google Maps ou Waze, sem usar endereço textual.
+ const m=block.match(/(?:destination=|[?&]ll=)(-?\d{1,2}(?:\.\d+)?)(?:%2C|,)(-?\d{1,3}(?:\.\d+)?)/i);
+ if(!m)return [null,null];
+ const lat=Number(m[1]),lng=Number(m[2]);
+ return Math.abs(lat)<=90&&Math.abs(lng)<=180?[lat,lng]:[null,null];
 }
-function previewWa(){waDraft=parseWa($('waText').value);$('waPreview').innerHTML=waDraft.map((x,i)=>`<div class="wa-item"><b>Pedido ${i+1}</b><label>Número<input data-wa="${i}:numero" value="${esc(x.numero)}"></label><label>Cliente<input data-wa="${i}:cliente_nome" value="${esc(x.cliente_nome)}"></label><label>Endereço completo<input data-wa="${i}:endereco" value="${esc(x.endereco)}"></label><label>Complemento<input data-wa="${i}:complemento" value="${esc(x.complemento)}"></label><label>Referência<input data-wa="${i}:referencia" value="${esc(x.referencia)}"></label><label>Localizador<input data-wa="${i}:localizador" value="${esc(x.localizador)}"></label><div class="two"><label>Latitude<input data-wa="${i}:latitude" value="${esc(x.latitude??'')}"></label><label>Longitude<input data-wa="${i}:longitude" value="${esc(x.longitude??'')}"></label></div><small>${x.latitude!==null&&x.longitude!==null?'📍 Coordenadas presentes':'⚠ Sem coordenadas: ponto não aparecerá no mapa'}</small></div>`).join('')||'<p class="muted">Cole a mensagem para conferir.</p>';$('waSaveBtn').disabled=!waDraft.length}
+// Leitor adaptado das regras do parseMessages/parseBatchBlock do Android.
+// Nao depende de a mensagem conter links em cada pedido.
+function parseWa(text){
+ const raw=String(text||'').replace(/\r/g,'').trim();
+ if(!raw)return [];
+ const headers=[...raw.matchAll(/^\s*\*?(\d+)º\s+Pedido\s*\(#?([^\)]+)\)\*?\s*$/gim)];
+ const coordBySeq=new Map();
+ for(const m of raw.matchAll(/^\s*(\d+)º\s*:\s*https?:\/\/(?:www\.)?waze\.com\/ul\?[^\n]*?ll=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/gim)){
+  coordBySeq.set(Number(m[1]),[Number(m[2]),Number(m[3])]);
+ }
+ const blocks=[];
+ if(headers.length){
+  const footer=raw.search(/(?:^|\n)\s*\*?Localizadores\*?\s*(?:\n|$)/im);
+  headers.forEach((h,i)=>{
+   const end=i+1<headers.length?headers[i+1].index:(footer>=0?footer:raw.length);
+   blocks.push({seq:Number(h[1]),numero:h[2].trim(),text:raw.slice(h.index,end)});
+  });
+ }else{
+  const starts=[...raw.matchAll(/^\s*\*?Pedido\s*:\s*\*?#?[^\n*]+\*?/gim)];
+  if(starts.length){starts.forEach((m,i)=>blocks.push({seq:i+1,numero:'',text:raw.slice(m.index,i+1<starts.length?starts[i+1].index:raw.length)}));}
+  else blocks.push({seq:1,numero:'',text:raw});
+ }
+ return blocks.map(entry=>{
+  const block=entry.text;
+  const get=(...labels)=>waValue(block,labels);
+  const numero=entry.numero||get('Pedido').replace(/^#/,'').replace(/\*/g,'').trim();
+  const cliente=get('Nome');
+  const rua=get('Rua');const numeroCasa=get('Número','Numero');const bairro=get('Bairro');
+  const endereco=[rua,numeroCasa,bairro].filter(Boolean).join(', ');
+  const coords=coordBySeq.get(entry.seq)||waCoordinates(block);
+  const lat=coords[0],lon=coords[1];
+  const is99=/food-b-h5\.99app\.com|99app\.com/i.test(block);
+  return {numero,cliente_nome:cliente,endereco,complemento:get('Complemento'),referencia:get('Ponto de referência','Referência'),localizador:get('Localizador'),plataforma:is99?'99food':'ifood',latitude:lat,longitude:lon,indice:entry.seq};
+ }).filter(p=>p.numero||p.localizador||p.endereco);
+}
+function previewWa(){
+ try{
+  waDraft=parseWa($('waText').value);
+  $('waPreview').innerHTML=waDraft.map((x,i)=>`<div class="wa-item"><b>Ponto ${x.indice} — Pedido #${esc(x.numero)}</b><label>Cliente<input data-wa="${i}:cliente_nome" value="${esc(x.cliente_nome)}"></label><label>Endereço<input data-wa="${i}:endereco" value="${esc(x.endereco)}"></label><label>Complemento<input data-wa="${i}:complemento" value="${esc(x.complemento)}"></label><label>Referência<input data-wa="${i}:referencia" value="${esc(x.referencia)}"></label><label>Localizador<input data-wa="${i}:localizador" value="${esc(x.localizador)}"></label><div class="two"><label>Latitude<input data-wa="${i}:latitude" value="${esc(x.latitude??'')}"></label><label>Longitude<input data-wa="${i}:longitude" value="${esc(x.longitude??'')}"></label></div><small>${x.latitude!=null&&x.longitude!=null?'📍 Coordenadas presentes':'⚠ Sem coordenadas; informe manualmente para mostrar no mapa'}</small></div>`).join('')||'<p class="muted">Nenhum pedido reconhecido. Confira se a mensagem contém Pedido: #1 ou 1º Pedido (#27).</p>';
+  $('waSaveBtn').disabled=!waDraft.length;
+  toast(waDraft.length?`${waDraft.length} pedido(s) reconhecido(s). Confira e salve.`:'Nenhum pedido reconhecido.',!waDraft.length);
+ }catch(e){waDraft=[];$('waSaveBtn').disabled=true;$('waPreview').textContent='Erro ao ler mensagem: '+errorText(e);toast(errorText(e),true);}
+}
 $('waPreviewBtn').onclick=previewWa;
 $('waPreview').addEventListener('input',e=>{const key=e.target.dataset.wa;if(!key)return;const [index,field]=key.split(':');waDraft[Number(index)][field]=e.target.value});
 $('waSaveBtn').onclick=async()=>{
@@ -158,7 +196,7 @@ $('waSaveBtn').onclick=async()=>{
  rows.push({empresa_id:state.empresa.id,loja_id:store,numero:x.numero.trim()||null,plataforma:x.plataforma,cliente_nome:x.cliente_nome.trim(),endereco:x.endereco.trim(),complemento:x.complemento.trim()||null,referencia:x.referencia.trim()||null,localizador:x.localizador.trim()||null,latitude:lat,longitude:lng,status:'pendente'});
  }
  const btn=$('waSaveBtn');btn.disabled=true;
- try{const {error}=await sb.from('pedidos').insert(rows);if(error)throw error;toast(`${rows.length} pedido(s) cadastrado(s). Selecione para despachar.`);waDraft=[];$('waText').value='';$('waPreview').innerHTML='';await fetchAll()}
+ try{const {data,error}=await sb.from('pedidos').insert(rows).select('id');if(error)throw error;waDraft=[];$('waText').value='';$('waPreview').innerHTML='';await fetchAll();if(data?.length===rows.length){state.selected=new Set(data.map(p=>p.id));render();toast(`${rows.length} pedido(s) importado(s) e selecionado(s). Confira a ordem antes de enviar a rota.`)}else toast(`${rows.length} pedido(s) cadastrados. Selecione-os na ordem desejada para despachar.`)}
  catch(e){toast('Erro ao importar: '+errorText(e),true)}finally{btn.disabled=!waDraft.length}
 };
 // A geração ocorre exclusivamente em função SQL autorizada, nunca no navegador.
