@@ -1,0 +1,13 @@
+ROTA FÁCIL — TESTE DA CAPTURA V0.1.0
+
+1. Chrome: chrome://extensions > Modo do desenvolvedor > Carregar sem compactação. Selecione a pasta extraída da extensão.
+2. Deixe o WhatsApp Web da LOJA aberto e conectado. A extensão observa apenas mensagens enviadas visíveis na conversa carregada.
+3. Publique os arquivos do ZIP do painel no mesmo endereço GitHub Pages já usado. Faça login no painel.
+4. Em Pedidos > Capturas, clique em Verificar capturas, escolha a loja e prepare uma mensagem. Confira os campos no importador existente e salve.
+5. As mensagens só saem da fila depois de salvas com sucesso. Se o painel estiver fechado, ficam na fila local do Chrome até a próxima abertura.
+6. Para recuperar, abra a conversa do despacho no WhatsApp Web e clique em Verificar mensagens visíveis na extensão.
+
+LIMITAÇÕES: protótipo não lê conversas não carregadas, não garante capturas quando o Chrome suspende a página, não faz varredura de todo o histórico e não sincroniza a fila entre computadores. A fila local depende do perfil do Chrome. Não use perfis compartilhados entre lojas.
+SEGURANÇA: não captura mensagens recebidas; filtra mensagens enviadas por padrão de pedido. Não transmite diretamente para servidores externos; o envio ao Supabase ocorre somente no painel após login e confirmação.
+MULTILOJA: nesta versão o vínculo com a loja é manual, no momento da importação. Não misture WhatsApps de lojas diferentes no mesmo perfil do Chrome. Antes de produção é necessário configurar pareamento autorizado por loja e deduplicação transacional no servidor.
+TESTE: ainda não executado em Chrome/WhatsApp real nem com Supabase ao vivo. Faça backup antes de publicar.

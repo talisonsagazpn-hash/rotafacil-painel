@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "Rota Fácil — Captura de Pedidos",
+  "version": "0.1.0",
+  "description": "Captura despachos visíveis no WhatsApp Web da loja e entrega ao painel autorizado.",
+  "permissions": [
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://web.whatsapp.com/*",
+    "https://talisonsagazpn-hash.github.io/rotafacil-painel/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://web.whatsapp.com/*"
+      ],
+      "js": [
+        "whatsapp.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://talisonsagazpn-hash.github.io/rotafacil-painel/*"
+      ],
+      "js": [
+        "bridge.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
