@@ -16,3 +16,11 @@
 
 /* Central de Entregas V0.3.6 */
 .central-live{font-size:11px;vertical-align:middle;border:1px solid #267a55;background:#123c2b;color:#8cf0b8;border-radius:999px;padding:5px 9px;letter-spacing:.04em;white-space:nowrap}.central-totals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:16px 0}.central-routes{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,350px),1fr));gap:14px}.central-card{display:flex;flex-direction:column;gap:14px}.central-card-head,.central-driver,.central-progress-head,.central-metrics{display:flex;align-items:center;justify-content:space-between;gap:12px}.central-driver{justify-content:flex-start;min-width:0}.central-driver h2{margin:0}.central-driver small{color:#9caeb8}.central-bike{font-size:30px}.central-metrics{flex-wrap:wrap;padding:12px;border-radius:10px;background:rgba(90,130,150,.09)}.central-metrics span{font-size:13px;color:#b7c5ce}.central-metrics b{font-size:20px;color:#fff;margin-right:4px}.central-progress-head{font-size:13px}.central-track{height:10px;background:#273d45;border-radius:99px;overflow:hidden}.central-track div{height:100%;background:#27aa71;border-radius:99px;transition:width .3s}.central-next{font-weight:600;margin:0}.central-card>.primary{align-self:flex-start}@media(max-width:650px){.central-totals{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.central-totals .stat{padding:9px}.central-totals .stat strong{font-size:23px}.central-card-head{align-items:flex-start;flex-wrap:wrap}}
+
+/* Classificação financeira */
+#financeRows tr.rf-fin-normal td:first-child{border-left:4px solid #22c55e}
+#financeRows tr.rf-fin-retorno td:first-child{border-left:4px solid #f59e0b}
+#financeRows tr.rf-fin-cancelada td:first-child{border-left:4px solid #ef4444}
+#financeRows tr.rf-fin-fora td:first-child{border-left:4px solid #a855f7}
+#outsideDialog{max-width:590px;width:min(95vw,590px)}
+#outsideDialog textarea{width:100%}

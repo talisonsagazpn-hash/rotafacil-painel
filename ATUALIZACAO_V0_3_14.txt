@@ -1,0 +1,1 @@
+V0.3.14: filtros por tipo, retorno somado com returnValue, serviço por fora via formulário e despacho existente. A exclusão bidirecional e a marcação da corrida por fora no Android requerem integração posterior. Nenhum SQL nesta versão.
