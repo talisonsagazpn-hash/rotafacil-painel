@@ -1,0 +1,4 @@
+V0.3.6 - Central de Entregas
+Menu Central de Entregas: rotas ativas, contagem por status, proxima parada, GPS e botao Visualizar motoboy no mapa.
+Consulta Supabase a cada 5 segundos (intervalo existente). Nao requer SQL novo.
+ATENCAO: conclusoes so aparecem quando pedidos.status for atualizado para entregue no Supabase. O Android pode precisar sincronizar esse status.

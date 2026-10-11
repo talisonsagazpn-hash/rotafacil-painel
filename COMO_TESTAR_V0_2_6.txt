@@ -1,0 +1,9 @@
+PAINEL V0.2.6 — DESPACHO POR WHATSAPP
+1. Publicar index.html, app.js, styles.css e config.js no GitHub Pages.
+2. Abrir Rotas, selecionar a loja e colar mensagem no campo.
+3. Conferir mensagem; corrigir cliente e endereco se necessario.
+4. Salvar pedidos conferidos. Selecionar pedidos e motoboy e clicar Enviar rota.
+5. No Mapa, selecionar motoboy e conferir numeros das paradas e linha indicativa.
+6. Para mostrar pontos no mapa, preencher coordenadas latitude/longitude de cada pedido. O painel nao geocodifica enderecos automaticamente.
+7. O despacho e registrado no Supabase, mas o Android ainda nao recebe as rotas automaticamente.
+8. Nao testar com pedidos reais sem revisar dados e isolamento da loja.

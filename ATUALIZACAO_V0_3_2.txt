@@ -1,0 +1,8 @@
+V0.3.2 — OTIMIZACAO VIARIA NO PAINEL
+- Botao Otimizar rota antes de despachar; usa GPS atual do motoboy e matriz OSRM (duracao de viagem pelas ruas), escolhendo proximo ponto pelo menor tempo a cada etapa, como Android V2.9.6.19.
+- Despacho usa a ordem calculada e grava em rota_paradas.ordem.
+- Mapa exibe geometria viaria retornada pelo OSRM em vez de linhas retas. Se o roteador falhar, nao desenha uma rota ficticia.
+- Requer internet e servico OSRM disponivel. Nao e garantido para alto volume sem provedor proprio; avaliar limites/termos antes de uso comercial.
+- A otimizacao parte do GPS do motoboy, nao da loja. Se quiser passar primeiro na loja, precisamos de coordenadas de retirada e incluir esse ponto como origem da rota.
+- Este pacote altera SOMENTE o painel. Recebimento automatico no Android ainda nao foi implementado.
+- Nao modifica tabelas nem historico.

@@ -1,0 +1,31 @@
+-- Cole o SQL abaixo no editor do Supabase; nao execute este arquivo automaticamente.
+CREATE OR REPLACE FUNCTION public.rota_gerenciar_despacho(p_rota_id uuid, p_acao text)
+RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $$
+DECLARE v_rota public.rotas%ROWTYPE; v_count integer;
+BEGIN
+  IF p_acao NOT IN ('release','cancel') THEN RAISE EXCEPTION 'Acao invalida'; END IF;
+  SELECT * INTO v_rota FROM public.rotas WHERE id=p_rota_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Rota inexistente'; END IF;
+  IF auth.uid() IS NULL OR NOT EXISTS (
+    SELECT 1 FROM public.membros
+    WHERE usuario_id=auth.uid() AND empresa_id=v_rota.empresa_id
+      AND ativo=true AND papel IN ('proprietario','gerente','atendente')
+  ) THEN RAISE EXCEPTION 'Sem permissao para gerenciar esta rota'; END IF;
+  IF v_rota.status NOT IN ('enviada','em_andamento') THEN RAISE EXCEPTION 'Rota ja encerrada'; END IF;
+  -- Bloqueia todos os pedidos desta rota ate a transacao terminar.
+  PERFORM 1 FROM public.pedidos p JOIN public.rota_paradas rp ON rp.pedido_id=p.id
+    WHERE rp.rota_id=p_rota_id AND p.empresa_id=v_rota.empresa_id FOR UPDATE OF p;
+  UPDATE public.pedidos p SET
+    status=CASE WHEN p_acao='release' THEN 'pendente' ELSE 'cancelado' END,
+    atualizado_em=now()
+  FROM public.rota_paradas rp
+  WHERE rp.rota_id=p_rota_id AND rp.pedido_id=p.id
+    AND p.empresa_id=v_rota.empresa_id AND p.status='em_rota';
+  GET DIAGNOSTICS v_count=ROW_COUNT;
+  UPDATE public.rotas SET status='cancelada' WHERE id=p_rota_id;
+  RETURN jsonb_build_object('ok',true,'acao',p_acao,'pedidos_afetados',v_count);
+END; $$;
+REVOKE ALL ON FUNCTION public.rota_gerenciar_despacho(uuid,text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.rota_gerenciar_despacho(uuid,text) TO authenticated;

@@ -1,0 +1,1 @@
+Painel agora consulta historico_entregas_motoboy diretamente. SQL de permissao fornecido na conversa. Nao altera Android nem exclui corridas. Exclusoes no celular nao propagam ao servidor.

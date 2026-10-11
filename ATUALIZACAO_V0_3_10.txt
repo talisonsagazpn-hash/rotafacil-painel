@@ -1,0 +1,1 @@
+V0.3.10 - Cancelar e receber R$10. Instalar SQL_SYNC_V0_3_10.sql em ambiente de testes ANTES de publicar painel e instalar Android. Nao executar em producao sem backup e teste. Acoes antigas de cancelar rota inteira nao foram convertidas para remuneradas; usar detalhes do pedido. Nao existe conciliacao de lancamentos financeiros legados neste pacote.

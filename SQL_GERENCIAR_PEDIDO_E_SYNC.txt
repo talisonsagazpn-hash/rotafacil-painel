@@ -1,0 +1,2 @@
+-- Execute o SQL fornecido na conversa no Supabase SQL Editor.
+-- Este arquivo e apenas uma referencia; nao executa automaticamente.

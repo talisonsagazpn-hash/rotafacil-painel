@@ -338,9 +338,21 @@ $('goImportOrders').onclick=()=>page('pedidos');$('ordersTable').onclick=async e
 const moneyRF=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 async function loadFinance(){
  if(!state.empresa)return;
- const {data,error}=await sb.from('financeiro_corridas_motoboy').select('pedido_id,motoboy_id,rota_id,resultado,valor,registrado_em').eq('empresa_id',state.empresa.id).order('registrado_em',{ascending:false}).limit(5000);
- if(error){toast('Financeiro: '+error.message,true);return}
- state.finance=data||[];renderFinance();
+ const {data,error}=await sb.from('historico_entregas_motoboy')
+  .select('motoboy_id,local_id,dados,salvo_em,atualizado_em')
+  .eq('empresa_id',state.empresa.id).order('salvo_em',{ascending:false}).limit(10000);
+ if(error){toast('Histórico financeiro: '+error.message,true);return}
+ // O historico sincronizado do Android e a fonte principal. Nunca somar
+ // novamente os mesmos pedidos a partir de financeiro_corridas_motoboy.
+ state.finance=(data||[]).filter(x=>x.dados?.delivered===true||x.dados?.cancelled===true).map(x=>{
+   const d=x.dados||{};const raw=Number(d.value);
+   return {motoboy_id:x.motoboy_id,local_id:x.local_id,
+     pedido_id:d.remotePedidoId||'',pedido_numero:String(d.order??''),
+     cliente:String(d.customer??''),resultado:d.cancelled===true?'Cancelada remunerada':'Entregue',
+     valor:Number.isFinite(raw)?raw:0,
+     registrado_em:x.salvo_em||x.atualizado_em||new Date(0).toISOString()};
+ });
+ renderFinance();
 }
 function financeFiltered(){
  const driver=$('financeDriver')?.value||'';const from=$('financeFrom')?.value||'';const to=$('financeTo')?.value||'';
@@ -354,12 +366,12 @@ function renderFinance(){
  const name=id=>state.motoboys.find(m=>m.id===id)?.nome||id;
  const summary=new Map();for(const x of rows){const v=summary.get(x.motoboy_id)||{n:0,total:0};v.n++;v.total+=Number(x.valor||0);summary.set(x.motoboy_id,v)}
  $('financeByDriver').innerHTML='<table><thead><tr><th>Motoboy</th><th>Corridas</th><th>Total</th></tr></thead><tbody>'+[...summary].map(([id,v])=>`<tr><td>${esc(name(id))}</td><td>${v.n}</td><td>${moneyRF(v.total)}</td></tr>`).join('')+'</tbody></table>';
- $('financeRows').innerHTML='<table><thead><tr><th>Data</th><th>Motoboy</th><th>Pedido</th><th>Resultado</th><th>Taxa</th></tr></thead><tbody>'+rows.map(x=>{const p=state.pedidos.find(p=>p.id===x.pedido_id);return `<tr><td>${fmt(x.registrado_em)}</td><td>${esc(name(x.motoboy_id))}</td><td>${esc(p?.numero||x.pedido_id.slice(0,8))} — ${esc(p?.cliente_nome||'')}</td><td>${esc(x.resultado)}</td><td>${moneyRF(x.valor)}</td></tr>`}).join('')+'</tbody></table>';
+ $('financeRows').innerHTML='<table><thead><tr><th>Data</th><th>Motoboy</th><th>Pedido</th><th>Resultado</th><th>Taxa</th></tr></thead><tbody>'+rows.map(x=>`<tr><td>${fmt(x.registrado_em)}</td><td>${esc(name(x.motoboy_id))}</td><td>${esc(x.pedido_numero)} — ${esc(x.cliente)}</td><td>${esc(x.resultado)}</td><td>${moneyRF(x.valor)}</td></tr>`).join('')+'</tbody></table>';
 }
 $('financeRefresh').onclick=loadFinance;
 for(const id of ['financeDriver','financeFrom','financeTo'])$(id).addEventListener('change',renderFinance);
 $('financeCsv').onclick=()=>{
- const rows=financeFiltered();const quote=v=>'"'+String(v??'').replaceAll('"','""')+'"';const lines=[['data','motoboy','pedido_id','resultado','valor'],...rows.map(x=>[x.registrado_em,state.motoboys.find(m=>m.id===x.motoboy_id)?.nome||x.motoboy_id,x.pedido_id,x.resultado,x.valor])];
+ const rows=financeFiltered();const quote=v=>'"'+String(v??'').replaceAll('"','""')+'"';const lines=[['data','motoboy','pedido_id','resultado','valor'],...rows.map(x=>[x.registrado_em,state.motoboys.find(m=>m.id===x.motoboy_id)?.nome||x.motoboy_id,x.local_id,x.resultado,x.valor])];
  const blob=new Blob(['\ufeff'+lines.map(r=>r.map(quote).join(';')).join('\r\n')],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='rota-facil-financeiro.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 };
 

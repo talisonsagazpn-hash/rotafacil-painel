@@ -1,0 +1,1 @@
+Pagamento por pedido via WhatsApp; exige executar SQL enviado inline na conversa. Nao apaga dados existentes. Android consulta rota_pagamentos_motoboy para complementar despachos. Versao fonte, compilacao APK nao verificada.

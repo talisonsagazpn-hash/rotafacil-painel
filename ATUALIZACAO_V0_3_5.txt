@@ -1,0 +1,2 @@
+Painel V0.3.5: Detalhes da rota permite retirar ou cancelar cada pedido pendente individualmente. Requer RPC rota_gerenciar_pedido no Supabase.
+Android V2.9.6.22: reconcilia pedidos remotos pendentes com RPC rota_pedidos_ativos_motoboy. Preserva entregas concluidas e pedidos locais. Sem a RPC, nao remove nada.
