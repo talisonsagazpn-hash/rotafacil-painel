@@ -1,0 +1,5 @@
+1. Execute Notas/01_SQL_FINANCEIRO_V0_3_12.sql no Supabase.
+2. Publique o ZIP do painel no GitHub Pages.
+3. Abra Financeiro e teste uma NOVA entrega enviada pelo painel.
+4. Historico antigo, cancelamentos remunerados e pedidos criados somente no Android ainda NAO sao importados.
+5. Valor padrao: R$ 10 por entrega; nao mistura com pagamento do cliente.
