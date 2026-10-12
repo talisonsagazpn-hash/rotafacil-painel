@@ -352,12 +352,21 @@ const moneyRF=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:
 async function loadFinance(){
  if(!state.empresa)return;
  const {data,error}=await sb.from('historico_entregas_motoboy')
-  .select('motoboy_id,local_id,dados,salvo_em,atualizado_em')
+  .select('motoboy_id,local_id,dados,salvo_em,atualizado_em,excluido_em')
   .eq('empresa_id',state.empresa.id).order('salvo_em',{ascending:false}).limit(10000);
  if(error){toast('Histórico financeiro: '+error.message,true);return}
  // O historico sincronizado do Android e a fonte principal. Nunca somar
  // novamente os mesmos pedidos a partir de financeiro_corridas_motoboy.
- state.finance=(data||[]).filter(x=>x.dados?.delivered===true||x.dados?.cancelled===true).map(x=>{
+ // Consolidar versoes do mesmo pedido remoto, mantendo a mais recente finalizada.
+ const latest=new Map();
+ for(const x of (data||[]).filter(r=>!r.excluido_em)){
+   const d=x.dados||{};
+   const key=d.remotePedidoId?`${x.motoboy_id}|remote|${d.remotePedidoId}`:`${x.motoboy_id}|local|${x.local_id}`;
+   const previous=latest.get(key);
+   const rank=r=>[(r.dados?.delivered===true||r.dados?.cancelled===true)?1:0,Date.parse(r.atualizado_em||r.salvo_em||0)];
+   if(!previous || rank(x)[0]>rank(previous)[0] || (rank(x)[0]===rank(previous)[0] && rank(x)[1]>rank(previous)[1]))latest.set(key,x);
+ }
+ state.finance=[...latest.values()].filter(x=>x.dados?.delivered===true||x.dados?.cancelled===true).map(x=>{
    const d=x.dados||{};const raw=Number(d.value),ret=Number(d.returnValue||0);
    const fora=String(d.platform||'').toLowerCase()==='outro' && (String(d.reference||'').includes('[CORRIDA POR FORA]')||String(d.customer||'').toLowerCase().includes('serviço por fora'));
    const tipo=fora?'fora':d.cancelled===true?'cancelada':ret>0?'retorno':'normal';
