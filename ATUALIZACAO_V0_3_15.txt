@@ -1,0 +1,6 @@
+Rota Fácil Painel V0.3.15
+1. Financeiro: ciclo atual e ciclos fechados (segunda a domingo); quarta-feira como previsão de pagamento; data de trabalho workDay do Android.
+2. Despacho: motoboy online pode receber novas rotas mesmo com outras rotas abertas.
+3. Não altera Android, banco de dados nem confirma pagamentos automaticamente.
+4. Testar despacho simultâneo com dois pedidos diferentes e verificar RPC do Supabase, caso o servidor restrinja rotas simultâneas.
+5. Ciclo fechado significa encerrado por data, NÃO significa pago.
