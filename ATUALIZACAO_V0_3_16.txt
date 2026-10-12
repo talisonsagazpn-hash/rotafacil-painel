@@ -1,0 +1,1 @@
+V0.3.16: extrato com início, fim, duração, resumo diário e atribuição ao ciclo pela data de início (startedAt), com fallback workDay para histórico antigo. CSV expandido.

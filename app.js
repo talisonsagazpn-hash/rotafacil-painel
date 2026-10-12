@@ -367,7 +367,8 @@ async function loadFinance(){
      retorno:Number.isFinite(ret)?ret:0,nota_retorno:String(d.returnNote||''),
      valor:(Number.isFinite(raw)?raw:0)+(Number.isFinite(ret)?ret:0),
      registrado_em:x.salvo_em||x.atualizado_em||new Date(0).toISOString(),
-     work_day:Number(d.workDay)||Number(d.createdAt)||0};
+     work_day:Number(d.startedAt)||Number(d.workDay)||Number(d.createdAt)||0,
+     started_at:Number(d.startedAt)||0,finished_at:Number(d.finishedAt)||0};
  });
  renderFinance();
 }
@@ -399,12 +400,16 @@ function renderFinance(){
  const name=id=>state.motoboys.find(m=>m.id===id)?.nome||id;
  const summary=new Map();for(const x of rows){const v=summary.get(x.motoboy_id)||{n:0,total:0};v.n++;v.total+=Number(x.valor||0);summary.set(x.motoboy_id,v)}
  $('financeByDriver').innerHTML='<table><thead><tr><th>Motoboy</th><th>Corridas</th><th>Total</th></tr></thead><tbody>'+[...summary].map(([id,v])=>`<tr><td>${esc(name(id))}</td><td>${v.n}</td><td>${moneyRF(v.total)}</td></tr>`).join('')+'</tbody></table>';
- $('financeRows').innerHTML='<table><thead><tr><th>Data de trabalho</th><th>Motoboy</th><th>Pedido</th><th>Resultado</th><th>Taxa</th></tr></thead><tbody>'+rows.map(x=>`<tr class="rf-fin-${x.tipo}"><td>${rfBR(rfDay(x.work_day||Date.parse(x.registrado_em)))}</td><td>${esc(name(x.motoboy_id))}</td><td>${esc(x.pedido_numero)} — ${esc(x.cliente)}</td><td>${esc(x.resultado)}${x.retorno>0?' (+'+moneyRF(x.retorno)+')':''}</td><td>${moneyRF(x.valor)}</td></tr>`).join('')+'</tbody></table>';
+ const dateTime=ms=>ms?new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(ms)):'Não registrado';
+ const duration=x=>x.started_at&&x.finished_at&&x.finished_at>=x.started_at?Math.floor((x.finished_at-x.started_at)/60000)+' min':'—';
+ const daily=new Map();for(const x of rows){const day=rfDay(x.work_day||Date.parse(x.registrado_em));const v=daily.get(day)||{count:0,total:0,normal:0,retorno:0,cancelada:0,fora:0};v.count++;v.total+=x.valor;v[x.tipo]++;daily.set(day,v)}
+ $('financeDaily').innerHTML='<table><thead><tr><th>Dia de trabalho</th><th>Corridas</th><th>Normais</th><th>Retornos</th><th>Canceladas pagas</th><th>Por fora</th><th>Total</th></tr></thead><tbody>'+[...daily].sort((a,b)=>b[0].localeCompare(a[0])).map(([day,v])=>`<tr><td>${rfBR(day)}</td><td>${v.count}</td><td>${v.normal}</td><td>${v.retorno}</td><td>${v.cancelada}</td><td>${v.fora}</td><td>${moneyRF(v.total)}</td></tr>`).join('')+'</tbody></table>';
+ $('financeRows').innerHTML='<table><thead><tr><th>Dia contabilizado</th><th>Motoboy</th><th>Pedido / Cliente</th><th>Início</th><th>Finalização</th><th>Duração</th><th>Resultado</th><th>Taxa</th></tr></thead><tbody>'+rows.sort((a,b)=>b.work_day-a.work_day).map(x=>`<tr class="rf-fin-${x.tipo}"><td>${rfBR(rfDay(x.work_day||Date.parse(x.registrado_em)))}</td><td>${esc(name(x.motoboy_id))}</td><td>#${esc(x.pedido_numero)} — ${esc(x.cliente)}</td><td>${dateTime(x.started_at)}</td><td>${dateTime(x.finished_at)}</td><td>${duration(x)}</td><td>${esc(x.resultado)}${x.retorno>0?' (+'+moneyRF(x.retorno)+')':''}</td><td>${moneyRF(x.valor)}</td></tr>`).join('')+'</tbody></table>';
 }
 $('financeRefresh').onclick=loadFinance;
 for(const id of ['financeDriver','financeFrom','financeTo','financeType','financeCycle'])$(id).addEventListener('change',renderFinance);
 $('financeCsv').onclick=()=>{
- const rows=financeFiltered();const quote=v=>'"'+String(v??'').replaceAll('"','""')+'"';const lines=[['data','motoboy','pedido_id','resultado','valor'],...rows.map(x=>[x.registrado_em,state.motoboys.find(m=>m.id===x.motoboy_id)?.nome||x.motoboy_id,x.local_id,x.resultado,x.valor])];
+ const rows=financeFiltered();const quote=v=>'"'+String(v??'').replaceAll('"','""')+'"';const lines=[['dia_contabilizado','motoboy','pedido','cliente','inicio_ms','fim_ms','duracao_min','resultado','valor'],...rows.map(x=>[rfDay(x.work_day||Date.parse(x.registrado_em)),state.motoboys.find(m=>m.id===x.motoboy_id)?.nome||x.motoboy_id,x.pedido_numero,x.cliente,x.started_at||'',x.finished_at||'',x.started_at&&x.finished_at?Math.floor((x.finished_at-x.started_at)/60000):'',x.resultado,x.valor])];
  const blob=new Blob(['\ufeff'+lines.map(r=>r.map(quote).join(';')).join('\r\n')],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='rota-facil-financeiro.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 };
 
