@@ -1,0 +1,1 @@
+Scanner gratuito sem OpenAI nem Edge Function. OCR Tesseract por+eng, contraste, ampliação e rotação. Conferir antes de cadastrar. O cadastro existente ainda não grava total, pagamento e produtos no Supabase. Nenhum SQL novo.

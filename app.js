@@ -596,10 +596,10 @@ function scannerParse(text){
  const forecast=value(/(?:entrega\s*prevista|previs[aã]o\s*de\s*entrega)\s*[:\-]\s*(.+)$/i);
  const created=pick(/(?:criado\s*em|data\s*(?:e\s*hora)?\s*do\s*pedido|hora\s*do\s*pedido)\s*[:\-]?\s*([0-9/:\s-]{5,25})/i);
  const total=pick(/(?:valor\s*total(?:\s*do\s*pedido)?|total\s*do\s*pedido|total\s*a\s*pagar|^total)\s*[:\-]?\s*R?\$?\s*([\d.,]+)/im);
- const paid=/pagamento\s+online\s+j[aá]\s+realizado|pago\s+online|pagamento\s+realizado|j[aá]\s+pago|pix\s+online/i.test(raw);
+ const paid=/pagamento\s+online\s+j[aá]\s+realizado|pago\s+online|pagamento\s+realizado|j[aá]\s+pago|pix\s+online|n[aã]o\s+cobrar\s+na\s+entrega|cobrar\s+do\s+cliente\s*R?\$?\s*0[,.]00/i.test(raw);
  const charge=/cobrar\s+(?:na\s+entrega|do\s+cliente)|pagamento\s+(?:na\s+entrega|pendente)|dinheiro\s+na\s+entrega|pagar\s+na\s+entrega/i.test(raw);
  const payment=paid?'pago':charge?'cobrar':'indefinido';
- const products=lines.filter(l=>/^\d+\s*[x×]\s+\S/.test(l));
+ const products=lines.filter(l=>/^\d+\s*[x×]\s+\S/.test(l)||/^\d+\s+\S.{7,}/.test(l)&&/(burger|açaí|tropeiro|fritas|combo)/i.test(l));
  return {platform,kind,number,client,fullAddress,complement,reference,locator,forecast,created,total,payment,products,text:raw};
 }
 function scannerRenderFields(item){
@@ -609,33 +609,47 @@ function scannerRenderFields(item){
  el.replaceChildren();fields.filter(([k,v])=>v||['Localizador','Criado em','Entrega prevista'].includes(k)).forEach(([k,v])=>{const row=document.createElement('div');row.style.cssText='padding:5px 0;border-bottom:1px solid #444;overflow-wrap:anywhere';const strong=document.createElement('strong');strong.textContent=k+': ';row.append(strong,document.createTextNode(v||'—'));el.append(row);});
 }
 
-async function scannerImageData(file){
- return await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('Não foi possível abrir a foto'));reader.readAsDataURL(file);});
+async function scannerPrepare(file, angle=0, contrast=1.6){
+ const image=await createImageBitmap(file);
+ try{
+  const sideways=angle===90||angle===270;
+  const width=sideways?image.height:image.width,height=sideways?image.width:image.height;
+  const scale=Math.min(2.5,Math.max(1,2000/Math.max(width,height)));
+  const canvas=document.createElement('canvas');canvas.width=Math.round(width*scale);canvas.height=Math.round(height*scale);
+  const ctx=canvas.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.translate(canvas.width/2,canvas.height/2);ctx.rotate(angle*Math.PI/180);
+  ctx.filter=`grayscale(1) contrast(${contrast}) brightness(1.08)`;
+  ctx.drawImage(image,-image.width*scale/2,-image.height*scale/2,image.width*scale,image.height*scale);
+  return canvas;
+ }finally{image.close();}
 }
+function scannerQuality(d){return (d.number?5:0)+(d.client?4:0)+(d.fullAddress?5:0)+(d.total?4:0)+(d.payment!=='indefinido'?3:0)+(d.locator?2:0)+(d.created?2:0)+(d.products.length?2:0);}
 async function scannerReadPhoto(item){
  if(item.removed)return;
- item.status='lendo';item.message='IA analisando etiqueta…';scannerRenderGallery();
+ item.status='lendo';item.message='Preparando leitura local gratuita…';scannerRenderGallery();
+ let worker;
  try{
-  const photoData=await scannerImageData(item.file);
-  const {data,error}=await sb.functions.invoke('scanner-ia',{body:{image:photoData}});
-  if(error)throw new Error(error.message||'Falha ao chamar a IA');
-  if(data?.error)throw new Error(data.error);
-  if(!data?.result)throw new Error('A IA não retornou dados');
-  item.data=data.result;item.text=data.transcription||JSON.stringify(data.result,null,2);
-  item.status='ok';item.message='IA concluiu a leitura. Confira os campos.';
- }catch(aiError){
-  item.message='IA indisponível: '+(aiError.message||aiError)+'. Tentando OCR local…';
-  try{
   await scannerLoadOcr();if(item.removed)return;
-  const worker=await Tesseract.createWorker('por',1,{logger:m=>{if(!item.removed&&m.status==='recognizing text'){item.message='Lendo etiqueta… '+Math.round((m.progress||0)*100)+'%';if(scannerPhotos[scannerSelected]===item)$('scannerOcrStatus').textContent=item.message;}}});
-  let result;try{result=await worker.recognize(item.file);}finally{await worker.terminate();}
+  worker=await Tesseract.createWorker('por+eng',1);
+  const variants=[[0,1.6],[0,1.12],[90,1.6],[270,1.6]];
+  let best=null;
+  for(let i=0;i<variants.length;i++){
+   if(item.removed)return;
+   item.message=`Analisando foto ${i+1}/${variants.length} (sem IA paga)…`;
+   if(scannerPhotos[scannerSelected]===item)$('scannerOcrStatus').textContent=item.message;
+   const canvas=await scannerPrepare(item.file,...variants[i]);
+   const res=await worker.recognize(canvas);
+   const txt=res.data.text||'', parsed=scannerParse(txt),score=scannerQuality(parsed);
+   if(!best||score>best.score)best={txt,parsed,score};
+   if(score>=23)break;
+  }
   if(item.removed)return;
-  item.text=result.data.text||'';item.data=scannerParse(item.text);
-  const filled=[item.data.number,item.data.client,item.data.fullAddress].filter(Boolean).length;
-  item.status=filled===3?'ok':'erro';
-  item.message=`${filled} de 3 campos principais reconhecidos. ${filled<3?'⚠ Confira e corrija os campos ausentes.':'Confira antes de cadastrar.'}`;
- }catch(err){if(item.removed)return;item.status='erro';item.message='IA: '+(aiError.message||aiError)+'; OCR local: '+(err.message||err);}
- }
+  item.text=best?.txt||'';item.data=best?.parsed||scannerParse('');
+  const required=[item.data.number,item.data.client,item.data.fullAddress].filter(Boolean).length;
+  item.status=required===3?'ok':'erro';
+  item.message=`${required}/3 campos principais identificados. Confira e corrija antes de salvar.`;
+ }catch(err){if(!item.removed){item.status='erro';item.message='Erro no OCR local: '+(err.message||err);}}
+ finally{if(worker)try{await worker.terminate()}catch(e){}}
  if(scannerPhotos[scannerSelected]===item)scannerSelect(scannerSelected);else scannerRenderGallery();
 }
 $('scannerNewOrder').addEventListener('click',()=>{
