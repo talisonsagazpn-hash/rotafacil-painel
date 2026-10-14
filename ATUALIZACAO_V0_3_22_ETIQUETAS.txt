@@ -1,0 +1,1 @@
+V0.3.22 - Regras das 3 etiquetas de teste: 99Food, Olo/Entrega Parceira, iFood. OCR mostra campos detectados antes do cadastro; pedido entre asteriscos; localizador apenas 99Food/iFood quando identificado; sem códigos extras. Pagamento e valor exibidos na conferência mas ainda não persistidos no banco. Conferir sempre a leitura. Não exige SQL.

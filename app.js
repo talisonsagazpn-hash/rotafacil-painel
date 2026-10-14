@@ -499,8 +499,8 @@ function scannerRenderGallery(){
 function scannerSelect(i){
  scannerSelected=i;const item=scannerPhotos[i];scannerObjectUrl=item?.url||null;scannerOcrResult=item?.data||null;
  if(!item){$('scannerPreview').classList.add('hidden');$('scannerOcrDetails').classList.add('hidden');$('scannerOcrStatus').textContent='';}
- else{$('scannerImage').src=item.url;$('scannerPreview').classList.remove('hidden');$('scannerOcrText').textContent=item.text||'Leitura pendente';$('scannerOcrDetails').classList.toggle('hidden',!item.text);$('scannerOcrStatus').textContent=item.message||'Aguardando leitura…';}
- scannerRenderGallery();
+ else{$('scannerImage').src=item.url;$('scannerPreview').classList.remove('hidden');$('scannerOcrText').textContent=item.text||'Leitura pendente';$('scannerOcrDetails').classList.toggle('hidden',!item.text);$('scannerOcrStatus').textContent=item.message||'Aguardando leitura…';}scannerRenderFields(item);
+ scannerRenderFields(item);scannerRenderGallery();
 }
 function scannerShowPhoto(file){
  if(!file||!file.type.startsWith('image/')){toast('Foto inválida.',true);return;}
@@ -571,29 +571,45 @@ function scannerLineValue(lines,label){
  return '';
 }
 function scannerParse(text){
- const lines=text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
- const pick=(rx)=>{const m=text.match(rx);return m?m[1].trim():''};
- const platform=/\b(?:i\s*food|ifood)\b/i.test(text)?'ifood':/99\s*food/i.test(text)?'99food':'outro';
- let number=scannerLineValue(lines,'(?:n[º°o.]?\\s*do\\s*)?pedido|order\\s*(?:number|id)|n[º°o.]');
- if(!number)number=pick(/(?:pedido|order)\s*[#nº°.:\-]*\s*([A-Z0-9\-]{3,18})/i);
- number=number.replace(/^(?:#|n[º°o.]?\s*)/i,'').split(/\s{2,}/)[0].slice(0,40);
- let client=scannerLineValue(lines,'cliente|customer|nome\\s*do\\s*cliente');
- if(!client)client=pick(/(?:cliente|customer)\s*[:\-]?\s*\n\s*([^\n]+)/i);
- const address=scannerLineValue(lines,'endere[cç]o(?:\\s*de\\s*entrega)?|rua|avenida|av\\.|logradouro');
- let street=address;
- if(address&&!/^(?:rua|avenida|av\.|travessa|alameda|pra[cç]a|rodovia)/i.test(address)&&/^(?:rua|avenida|av\.|travessa|alameda|pra[cç]a|rodovia)/i.test(lines.find(l=>l.includes(address))||''))street=lines.find(l=>l.includes(address));
- if(!street){street=lines.find(l=>/^(?:rua|r\.|avenida|av\.|travessa|alameda|pra[cç]a|rodovia)\s/i.test(l))||'';}
- const district=scannerLineValue(lines,'bairro');const city=scannerLineValue(lines,'cidade|munic[ií]pio');
- let fullAddress=[street,district,city].filter(Boolean).join(', ');
- const complement=scannerLineValue(lines,'complemento|apto|apartamento');
- const reference=scannerLineValue(lines,'refer[eê]ncia|ponto\\s*de\\s*refer[eê]ncia');
- const locator=scannerLineValue(lines,'localizador');
- const forecast=scannerLineValue(lines,'entrega\\s*prevista|previs[aã]o\\s*de\\s*entrega');
- const paid=/pagamento\s+online\s+j[aá]\s+realizado|pago\s+online|pagamento\s+realizado|pago\s+via\s+(?:pix|cart[aã]o)/i.test(text);
- const charge=/cobrar\s+(?:na\s+entrega|do\s+cliente)|pagamento\s+(?:na\s+entrega|pendente)|dinheiro\s+na\s+entrega/i.test(text);
- const value=pick(/(?:total(?:\s+do\s+pedido)?|valor\s+a\s+cobrar)\s*[:\-]?\s*R\$\s*([\d.,]+)/i);
- return {platform,number,client,fullAddress,complement,reference,locator,forecast,payment:paid?'pago':charge?'cobrar':'indefinido',value,text};
+ const raw=String(text||'').replace(/\u00a0/g,' ');
+ const lines=raw.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+ const pick=rx=>{const m=raw.match(rx);return m?(m[1]||'').trim():''};
+ const value=rx=>{for(let i=0;i<lines.length;i++){const m=lines[i].match(rx);if(m)return (m[1]||lines[i+1]||'').trim();}return ''};
+ // Entrega Parceira / Olo é pedido da loja, não plataforma iFood.
+ const olo=/\b(?:olo|entrega\s+parceira)\b/i.test(raw);
+ const platform=olo?'outro':/99\s*food|didi\s*delivery/i.test(raw)?'99food':/\bi\s*food\b/i.test(raw)?'ifood':'outro';
+ const kind=olo?'Entrega da loja (Olo)':platform==='99food'?'99Food':platform==='ifood'?'iFood':'Não identificada';
+ let number=pick(/\*{2,}\s*#?\s*([A-Z0-9-]{1,25})\s*\*{2,}/i);
+ if(!number)number=pick(/#{1,2}\s*([0-9]{1,12})\b/);
+ if(!number)number=value(/(?:n[º°o.]?\s*(?:do\s*)?pedido|pedido\s*n[º°o.]?|n[uú]mero\s*do\s*pedido)\s*[:#-]?\s*(\w[\w-]*)/i);
+ number=number.replace(/^#/,'').slice(0,40);
+ let client=value(/^(?:cliente|nome\s*do\s*cliente|customer)\s*[:\-]\s*(.+)$/i);
+ if(!client)client=value(/^(?:cliente|nome\s*do\s*cliente|customer)\s*:?\s*$/i);
+ let street=lines.find(l=>/^(?:rua|r\.|avenida|av\.|travessa|alameda|pra[cç]a|rodovia)\s/i.test(l))||'';
+ if(!street)street=value(/^endere[cç]o(?:\s*de\s*entrega)?\s*[:\-]\s*(.+)$/i);
+ const district=value(/^bairro\s*[:\-]\s*(.+)$/i);
+ const city=value(/^(?:cidade|munic[ií]pio)\s*[:\-]\s*(.+)$/i);
+ const complement=value(/^complemento\s*[:\-]\s*(.+)$/i);
+ const reference=value(/^refer[eê]ncia\s*[:\-]\s*(.+)$/i);
+ const fullAddress=[street,district,city].filter(Boolean).join(', ');
+ let locator=platform==='outro'?'':value(/^localizador\s*[:#\-]?\s*(\d[\d\s-]{3,})/i);
+ if(!locator&&platform!=='outro')locator=pick(/localizador\s*\n\s*(\d[\d\s-]{3,})/i);
+ const forecast=value(/(?:entrega\s*prevista|previs[aã]o\s*de\s*entrega)\s*[:\-]\s*(.+)$/i);
+ const created=pick(/(?:criado\s*em|data\s*(?:e\s*hora)?\s*do\s*pedido|hora\s*do\s*pedido)\s*[:\-]?\s*([0-9/:\s-]{5,25})/i);
+ const total=pick(/(?:valor\s*total(?:\s*do\s*pedido)?|total\s*do\s*pedido|total\s*a\s*pagar|^total)\s*[:\-]?\s*R?\$?\s*([\d.,]+)/im);
+ const paid=/pagamento\s+online\s+j[aá]\s+realizado|pago\s+online|pagamento\s+realizado|j[aá]\s+pago|pix\s+online/i.test(raw);
+ const charge=/cobrar\s+(?:na\s+entrega|do\s+cliente)|pagamento\s+(?:na\s+entrega|pendente)|dinheiro\s+na\s+entrega|pagar\s+na\s+entrega/i.test(raw);
+ const payment=paid?'pago':charge?'cobrar':'indefinido';
+ const products=lines.filter(l=>/^\d+\s*[x×]\s+\S/.test(l));
+ return {platform,kind,number,client,fullAddress,complement,reference,locator,forecast,created,total,payment,products,text:raw};
 }
+function scannerRenderFields(item){
+ const el=$('scannerFields');if(!el)return;
+ const d=item?.data;if(!d){el.textContent='Fotografe uma etiqueta para conferir os campos reconhecidos.';return;}
+ const fields=[['Tipo',d.kind],['Pedido',d.number?'#'+d.number:'⚠ Não encontrado'],['Criado em',d.created],['Cliente',d.client||'⚠ Não encontrado'],['Endereço',d.fullAddress||'⚠ Não encontrado'],['Complemento',d.complement],['Referência',d.reference],['Localizador',d.locator],['Entrega prevista',d.forecast],['Valor total',d.total?'R$ '+d.total:'⚠ Conferir'],['Pagamento',d.payment==='pago'?'🟢 PAGO ONLINE':d.payment==='cobrar'?'🔴 COBRAR NA ENTREGA':'⚠ NÃO IDENTIFICADO'],['Produtos',d.products.join(' | ')]];
+ el.replaceChildren();fields.filter(([k,v])=>v||['Localizador','Criado em','Entrega prevista'].includes(k)).forEach(([k,v])=>{const row=document.createElement('div');row.style.cssText='padding:5px 0;border-bottom:1px solid #444;overflow-wrap:anywhere';const strong=document.createElement('strong');strong.textContent=k+': ';row.append(strong,document.createTextNode(v||'—'));el.append(row);});
+}
+
 async function scannerReadPhoto(item){
  if(item.removed)return;
  item.status='lendo';item.message='Lendo etiqueta…';scannerRenderGallery();
@@ -615,7 +631,7 @@ $('scannerNewOrder').addEventListener('click',()=>{
  const d=scannerPhotos[scannerSelected]?.data||{};
  $('orderNumber').value=d.number||'';$('orderPlatform').value=d.platform||'outro';
  $('orderClient').value=d.client||'';$('orderAddress').value=d.fullAddress||'';
- $('orderComplement').value=d.complement||'';$('orderReference').value=d.reference||'';$('orderLocator').value=d.locator||'';
+ $('orderComplement').value=d.complement||'';$('orderReference').value=d.reference||'';$('orderLocator').value=d.platform==='outro'?'':(d.locator||'');
  $('orderCoords').classList.add('hidden');scannerFromPhoto=true;
  $('orderDialog').showModal();
  toast('Confira cliente, endereço e número. Corrija qualquer campo antes de salvar.');
