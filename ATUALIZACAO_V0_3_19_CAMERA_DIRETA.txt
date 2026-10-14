@@ -1,0 +1,8 @@
+V0.3.19 — Scanner com câmera direta
+- Botão Abrir câmera aciona a câmera traseira diretamente no navegador do celular.
+- Botão Tirar foto captura imagem e exibe prévia.
+- Botões Fechar câmera e Limpar foto; câmera é desligada após captura ou saída da aba.
+- Em navegadores sem suporte à câmera integrada, usa captura pelo app de câmera como alternativa.
+- Exige HTTPS e permissão de câmera. GitHub Pages usa HTTPS.
+- Nesta etapa não há OCR, upload de foto ou leitura automática. Cadastro segue manual após a foto.
+- Não exige SQL novo. Substitua arquivos do painel no GitHub para publicar a atualização.

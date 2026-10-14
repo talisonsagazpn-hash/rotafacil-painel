@@ -470,20 +470,58 @@ if(recoveryLink){
 
 // Scanner de etiquetas: captura local e cadastro conferido. OCR e upload não implementados nesta etapa.
 let scannerObjectUrl=null;
+let scannerCameraStream=null;
+function scannerStopCamera(){
+ if(scannerCameraStream){scannerCameraStream.getTracks().forEach(t=>t.stop());scannerCameraStream=null;}
+ $('scannerCameraVideo').srcObject=null;
+ $('scannerCameraBox').classList.add('hidden');
+ $('scannerTakePhoto').classList.add('hidden');
+ $('scannerCloseCamera').classList.add('hidden');
+ $('scannerOpenCamera').classList.remove('hidden');
+}
+function scannerShowPhoto(file){
+ if(scannerObjectUrl){URL.revokeObjectURL(scannerObjectUrl);scannerObjectUrl=null;}
+ if(!file||!file.type.startsWith('image/')){toast('Foto inválida.',true);return;}
+ if(file.size>12*1024*1024){toast('Foto muito grande (máximo 12 MB).',true);return;}
+ scannerObjectUrl=URL.createObjectURL(file);$('scannerImage').src=scannerObjectUrl;
+ $('scannerPreview').classList.remove('hidden');$('scannerNewOrder').disabled=false;$('scannerClear').disabled=false;
+ scannerStopCamera();
+}
 function scannerClearPhoto(){
+ scannerStopCamera();
  if(scannerObjectUrl){URL.revokeObjectURL(scannerObjectUrl);scannerObjectUrl=null;}
  $('scannerPhoto').value='';$('scannerImage').removeAttribute('src');
  $('scannerPreview').classList.add('hidden');$('scannerNewOrder').disabled=true;$('scannerClear').disabled=true;
 }
-$('scannerPhoto').addEventListener('change',ev=>{
- const file=ev.target.files?.[0];
- if(scannerObjectUrl){URL.revokeObjectURL(scannerObjectUrl);scannerObjectUrl=null;}
- if(!file){scannerClearPhoto();return;}
- if(!file.type.startsWith('image/')){toast('Selecione uma imagem da etiqueta.',true);scannerClearPhoto();return;}
- if(file.size>12*1024*1024){toast('Foto muito grande. Use uma imagem de até 12 MB.',true);scannerClearPhoto();return;}
- scannerObjectUrl=URL.createObjectURL(file);$('scannerImage').src=scannerObjectUrl;
- $('scannerPreview').classList.remove('hidden');$('scannerNewOrder').disabled=false;$('scannerClear').disabled=false;
+$('scannerOpenCamera').addEventListener('click',async()=>{
+ if(!navigator.mediaDevices?.getUserMedia){
+  // Navegadores sem câmera embutida: solicitar captura pelo aplicativo de câmera.
+  $('scannerPhoto').click();return;
+ }
+ try{
+  scannerCameraStream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}}});
+  $('scannerCameraVideo').srcObject=scannerCameraStream;
+  await $('scannerCameraVideo').play();
+  $('scannerCameraBox').classList.remove('hidden');$('scannerTakePhoto').classList.remove('hidden');
+  $('scannerCloseCamera').classList.remove('hidden');$('scannerOpenCamera').classList.add('hidden');
+ }catch(e){
+  scannerStopCamera();
+  toast('Não foi possível abrir a câmera. Confira a permissão do navegador.',true);
+ }
 });
+$('scannerTakePhoto').addEventListener('click',()=>{
+ const video=$('scannerCameraVideo');
+ if(!scannerCameraStream||!video.videoWidth){toast('Aguarde a câmera carregar.',true);return;}
+ const canvas=document.createElement('canvas');canvas.width=video.videoWidth;canvas.height=video.videoHeight;
+ canvas.getContext('2d').drawImage(video,0,0,canvas.width,canvas.height);
+ canvas.toBlob(blob=>{
+  if(!blob){toast('Não foi possível capturar a foto.',true);return;}
+  scannerShowPhoto(new File([blob],'etiqueta.jpg',{type:'image/jpeg'}));
+ },'image/jpeg',0.88);
+});
+$('scannerCloseCamera').addEventListener('click',scannerStopCamera);
+$('scannerPhoto').addEventListener('change',ev=>{const file=ev.target.files?.[0];if(file)scannerShowPhoto(file);});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)scannerStopCamera();});
 $('scannerClear').addEventListener('click',scannerClearPhoto);
 $('scannerNewOrder').addEventListener('click',()=>{
  if(!scannerObjectUrl||!state.empresa){toast('Fotografe uma etiqueta primeiro.',true);return;}
