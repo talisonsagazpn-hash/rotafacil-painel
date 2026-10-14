@@ -499,8 +499,7 @@ function scannerRenderGallery(){
 function scannerSelect(i){
  scannerSelected=i;const item=scannerPhotos[i];scannerObjectUrl=item?.url||null;scannerOcrResult=item?.data||null;
  if(!item){$('scannerPreview').classList.add('hidden');$('scannerOcrDetails').classList.add('hidden');$('scannerOcrStatus').textContent='';}
- else{$('scannerImage').src=item.url;$('scannerPreview').classList.remove('hidden');$('scannerOcrText').textContent=item.text||'Leitura pendente';$('scannerOcrDetails').classList.toggle('hidden',!item.text);$('scannerOcrStatus').textContent=item.message||'Aguardando leitura…';}scannerRenderFields(item);
- scannerRenderFields(item);scannerRenderGallery();
+ else{$('scannerImage').src=item.url;$('scannerPreview').classList.remove('hidden');$('scannerOcrText').textContent=item.text||'Leitura pendente';$('scannerOcrDetails').classList.toggle('hidden',!item.text);$('scannerOcrStatus').textContent=item.message||'Aguardando leitura…';}scannerRenderFields(item);scannerRenderGallery();
 }
 function scannerShowPhoto(file){
  if(!file||!file.type.startsWith('image/')){toast('Foto inválida.',true);return;}
@@ -606,14 +605,27 @@ function scannerParse(text){
 function scannerRenderFields(item){
  const el=$('scannerFields');if(!el)return;
  const d=item?.data;if(!d){el.textContent='Fotografe uma etiqueta para conferir os campos reconhecidos.';return;}
- const fields=[['Tipo',d.kind],['Pedido',d.number?'#'+d.number:'⚠ Não encontrado'],['Criado em',d.created],['Cliente',d.client||'⚠ Não encontrado'],['Endereço',d.fullAddress||'⚠ Não encontrado'],['Complemento',d.complement],['Referência',d.reference],['Localizador',d.locator],['Entrega prevista',d.forecast],['Valor total',d.total?'R$ '+d.total:'⚠ Conferir'],['Pagamento',d.payment==='pago'?'🟢 PAGO ONLINE':d.payment==='cobrar'?'🔴 COBRAR NA ENTREGA':'⚠ NÃO IDENTIFICADO'],['Produtos',d.products.join(' | ')]];
+ const fields=[['Tipo',d.kind],['Pedido',d.number?'#'+d.number:'⚠ Não encontrado'],['Criado em',d.created],['Cliente',d.client||'⚠ Não encontrado'],['Endereço',d.fullAddress||'⚠ Não encontrado'],['Complemento',d.complement],['Referência',d.reference],['Localizador',d.locator],['Entrega prevista',d.forecast],['Valor total',d.total?'R$ '+d.total:'⚠ Conferir'],['Pagamento',d.payment==='pago'?'🟢 PAGO ONLINE':d.payment==='cobrar'?'🔴 COBRAR NA ENTREGA':'⚠ NÃO IDENTIFICADO'],['Produtos',(d.products||[]).join(' | ')]];
  el.replaceChildren();fields.filter(([k,v])=>v||['Localizador','Criado em','Entrega prevista'].includes(k)).forEach(([k,v])=>{const row=document.createElement('div');row.style.cssText='padding:5px 0;border-bottom:1px solid #444;overflow-wrap:anywhere';const strong=document.createElement('strong');strong.textContent=k+': ';row.append(strong,document.createTextNode(v||'—'));el.append(row);});
 }
 
+async function scannerImageData(file){
+ return await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('Não foi possível abrir a foto'));reader.readAsDataURL(file);});
+}
 async function scannerReadPhoto(item){
  if(item.removed)return;
- item.status='lendo';item.message='Lendo etiqueta…';scannerRenderGallery();
+ item.status='lendo';item.message='IA analisando etiqueta…';scannerRenderGallery();
  try{
+  const photoData=await scannerImageData(item.file);
+  const {data,error}=await sb.functions.invoke('scanner-ia',{body:{image:photoData}});
+  if(error)throw new Error(error.message||'Falha ao chamar a IA');
+  if(data?.error)throw new Error(data.error);
+  if(!data?.result)throw new Error('A IA não retornou dados');
+  item.data=data.result;item.text=data.transcription||JSON.stringify(data.result,null,2);
+  item.status='ok';item.message='IA concluiu a leitura. Confira os campos.';
+ }catch(aiError){
+  item.message='IA indisponível: '+(aiError.message||aiError)+'. Tentando OCR local…';
+  try{
   await scannerLoadOcr();if(item.removed)return;
   const worker=await Tesseract.createWorker('por',1,{logger:m=>{if(!item.removed&&m.status==='recognizing text'){item.message='Lendo etiqueta… '+Math.round((m.progress||0)*100)+'%';if(scannerPhotos[scannerSelected]===item)$('scannerOcrStatus').textContent=item.message;}}});
   let result;try{result=await worker.recognize(item.file);}finally{await worker.terminate();}
@@ -622,7 +634,8 @@ async function scannerReadPhoto(item){
   const filled=[item.data.number,item.data.client,item.data.fullAddress].filter(Boolean).length;
   item.status=filled===3?'ok':'erro';
   item.message=`${filled} de 3 campos principais reconhecidos. ${filled<3?'⚠ Confira e corrija os campos ausentes.':'Confira antes de cadastrar.'}`;
- }catch(err){if(item.removed)return;item.status='erro';item.message='Erro na leitura: '+(err.message||err)+'. Confira manualmente.';}
+ }catch(err){if(item.removed)return;item.status='erro';item.message='IA: '+(aiError.message||aiError)+'; OCR local: '+(err.message||err);}
+ }
  if(scannerPhotos[scannerSelected]===item)scannerSelect(scannerSelected);else scannerRenderGallery();
 }
 $('scannerNewOrder').addEventListener('click',()=>{

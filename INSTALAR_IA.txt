@@ -1,0 +1,12 @@
+ROTA FÁCIL - SCANNER COM IA (VERSÃO PARA CONFIGURAR)
+
+1. No Supabase, vá em Edge Functions e crie a função scanner-ia.
+2. Cole o conteúdo de supabase/functions/scanner-ia/index.ts e publique (deploy).
+3. Em Edge Functions > Secrets, adicione OPENAI_API_KEY com sua chave de API da OpenAI. Não coloque essa chave em config.js nem no GitHub.
+4. Publique index.html, app.js, config.js e styles.css no GitHub Pages (preserve seus valores atuais de config.js).
+5. Faça login no painel e teste a leitura das fotos. Se a IA falhar, o painel tentará OCR local.
+
+A API da OpenAI tem cobrança por uso e requer saldo/acesso habilitado. Assinatura ChatGPT não substitui chave de API.
+Esta integração não foi testada com chamadas reais à OpenAI ou Supabase, pois não temos credenciais de execução.
+Não há SQL novo nesta versão.
+IMPORTANTE: O cadastro de pedidos mantém os campos atuais da tabela; valor total, pagamento e produtos aparecem na conferência, mas ainda não são persistidos pelo cadastro existente.
