@@ -1,0 +1,5 @@
+1. Execute o SQL_CANCELAMENTO_V0_3_27.sql no Supabase SQL Editor.
+2. Publique index.html, app.js, styles.css e config.js no GitHub Pages.
+3. Atualize o painel no PC e celular. Selecione pedido pendente e use Cancelar selecionados.
+4. Verifique no PC e celular que o pedido sumiu dos disponíveis e permanece no histórico como cancelado.
+ATENÇÃO: o aplicativo Android não foi alterado nesta versão. Para remoções feitas diretamente no Android, a sincronização depende de o app enviar status ao Supabase.

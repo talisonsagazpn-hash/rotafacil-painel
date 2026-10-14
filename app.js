@@ -202,18 +202,19 @@ async function deleteSelectedOrders(){
  const ids=[...state.selected];if(!ids.length)return;
  const store=$('routeStore').value;
  const valid=ids.every(id=>state.pedidos.some(p=>p.id===id&&p.empresa_id===state.empresa.id&&p.loja_id===store&&p.status==='pendente'));
- if(!valid){toast('A seleção mudou. Atualize os pedidos antes de excluir.',true);await fetchAll();return;}
+ if(!valid){toast('A seleção mudou. Atualize os pedidos.',true);await fetchAll();return;}
  const names=ids.map(id=>{const p=state.pedidos.find(x=>x.id===id);return '#'+(p.numero||p.id.slice(0,6))+' — '+p.cliente_nome;});
- if(!confirm(`Excluir DEFINITIVAMENTE ${ids.length} pedido(s) disponível(is)?\n\n${names.slice(0,8).join('\n')}${names.length>8?'\n...':''}\n\nEssa ação não pode ser desfeita. Nenhuma rota será enviada.`))return;
- const btn=$('deleteSelectedOrders');btn.disabled=true;btn.textContent='Excluindo...';
+ if(!confirm(`Cancelar ${ids.length} pedido(s)?\n\n${names.slice(0,8).join('\n')}\n\nOs pedidos sairão dos disponíveis, mas permanecerão no histórico. Não haverá pagamento automático.`))return;
+ const btn=$('deleteSelectedOrders');btn.disabled=true;btn.textContent='Cancelando...';
  try{
-  const {data,error}=await sb.rpc('rota_excluir_pedidos_disponiveis',{p_empresa_id:state.empresa.id,p_loja_id:store,p_pedido_ids:ids});
+  const {data,error}=await sb.rpc('rota_cancelar_pedidos_loja',{p_empresa_id:state.empresa.id,p_loja_id:store,p_pedido_ids:ids});
   if(error)throw error;
-  if(Number(data?.excluidos)!==ids.length)throw new Error('Quantidade excluída diferente da selecionada. Atualize e confira.');
-  state.selected.clear();invalidateOptimization();toast(`${ids.length} pedido(s) excluído(s) com sucesso.`);await fetchAll();
- }catch(e){toast('Não foi possível excluir: '+errorText(e),true);await fetchAll()}
- finally{btn.textContent='🗑 Excluir selecionados';btn.disabled=state.selected.size===0;}
+  if(Number(data?.cancelados)!==ids.length)throw new Error('Quantidade diferente da seleção. Atualize e confira.');
+  state.selected.clear();invalidateOptimization();toast(`${ids.length} pedido(s) cancelado(s). Histórico preservado.`);await fetchAll();
+ }catch(e){toast('Não foi possível cancelar: '+errorText(e),true);await fetchAll()}
+ finally{btn.textContent='🚫 Cancelar selecionados';btn.disabled=state.selected.size===0;}
 }
+
 async function sendRoute(){const driver=$('routeDriver').value,store=$('routeStore').value;const opt=state.optimized;const ids=opt?.ids||[];if(!opt||opt.driver!==driver||opt.store!==store||ids.length!==state.selected.size||ids.some(id=>!state.selected.has(id)))return toast('Otimize a rota antes de enviar. A ordem deve ser conferida.',true);if(!driver||!store||!ids.length)return toast('Selecione a loja, o motoboy e pelo menos um pedido.',true);const availableDriver=state.motoboys.find(m=>m.id===driver);if(!availableDriver||!availableDriver.ativo||!driverLive(driverLoc(availableDriver)) ) return toast('Motoboy offline ou inativo. Atualize e escolha outro.',true);const button=$('sendRoute');button.disabled=true;let created=null;try{const check=await Promise.all([sb.from('localizacoes_motoboy').select('*').eq('empresa_id',state.empresa.id).eq('motoboy_id',driver).maybeSingle()]);if(check.some(x=>x.error))throw (check.find(x=>x.error).error);if(!driverLive(check[0].data))throw new Error('Motoboy ficou offline.');const {data,error}=await sb.from('rotas').insert({empresa_id:state.empresa.id,loja_id:store,motoboy_id:driver,status:'enviada',enviada_em:new Date().toISOString()}).select('id').single();if(error)throw error;created=data.id;const stops=ids.map((id,i)=>({empresa_id:state.empresa.id,rota_id:created,pedido_id:id,ordem:i+1}));const inserted=await sb.from('rota_paradas').insert(stops);if(inserted.error)throw inserted.error;const updated=await sb.from('pedidos').update({status:'em_rota',atualizado_em:new Date().toISOString()}).in('id',ids).eq('empresa_id',state.empresa.id).eq('status','pendente').select('id');if(updated.error)throw updated.error;if(updated.data.length!==ids.length)throw new Error('Nem todos os pedidos puderam ser atualizados. Verifique a rota antes de reenviar.');state.selected.clear();invalidateOptimization();toast('Rota registrada na nuvem! O envio ao celular depende da integração Android.');await fetchAll()}catch(e){toast(`Erro ao enviar rota: ${errorText(e)}${created?' (rota criada parcialmente; confira antes de tentar novamente)':''}`,true);await fetchAll()}finally{button.disabled=false}}
 
 
@@ -346,7 +347,7 @@ $('routesList').addEventListener('click',e=>{
  const id=btn.dataset.routeDetail||btn.dataset.routeRelease||btn.dataset.routeCancel;
  const action=btn.dataset.routeDetail?'detail':btn.dataset.routeRelease?'release':'cancel';manageRoute(id,action);
 });
-$('goImportOrders').onclick=()=>page('pedidos');$('ordersTable').onclick=async e=>{const id=e.target.closest('[data-cancel]')?.dataset.cancel;if(!id||!confirm('Cancelar este pedido?'))return;const {error}=await sb.from('pedidos').update({status:'cancelado',atualizado_em:new Date().toISOString()}).eq('id',id).eq('status','pendente');if(error)toast(errorText(error),true);else{toast('Pedido cancelado.');await fetchAll()}};
+$('goImportOrders').onclick=()=>page('pedidos');$('ordersTable').onclick=async e=>{const id=e.target.closest('[data-cancel]')?.dataset.cancel;if(!id)return;const order=state.pedidos.find(p=>p.id===id);if(!order||!confirm('Cancelar este pedido e preservar o histórico?'))return;const {error}=await sb.rpc('rota_cancelar_pedidos_loja',{p_empresa_id:state.empresa.id,p_loja_id:order.loja_id,p_pedido_ids:[id]});if(error)toast(errorText(error),true);else{toast('Pedido cancelado e sincronizado.');await fetchAll()}};
 // Financeiro administrativo: leitura por empresa, sem misturar recebimento do cliente.
 const moneyRF=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 async function loadFinance(){
