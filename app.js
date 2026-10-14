@@ -151,7 +151,7 @@ async function saveOutside(ev){
  const payload={empresa_id:state.empresa.id,loja_id:$('outsideStore').value,
   numero:'AV-'+Date.now().toString(36).toUpperCase(),plataforma:'outro',cliente_nome:'Tiago — serviço por fora',
   endereco:address,referencia:'[CORRIDA POR FORA] '+desc,complemento:desc,
-  latitude:Number($('outsideLat').value),longitude:Number($('outsideLng').value)};
+  latitude:$('outsideLat').value.trim()?Number($('outsideLat').value):null,longitude:$('outsideLng').value.trim()?Number($('outsideLng').value):null};
  const {data,error}=await sb.from('pedidos').insert(payload).select('id').single();
  if(error)return toast('Não foi possível criar corrida: '+errorText(error),true);
  $('outsideDialog').close();$('outsideDescription').value='';await fetchAll();
@@ -165,7 +165,7 @@ function optimizeFeedback(message,bad=false){const el=$('optimizeFeedback');if(e
 function updateOptimizationUI(){
  const el=$('optimizedPreview');if(!el)return;
  const o=state.optimized;
- el.textContent=o?`Ordem otimizada: ${o.ids.map((id,i)=>{const p=state.pedidos.find(x=>x.id===id);return `${i+1}. #${p?.numero||'?'} ${p?.cliente_nome||''}`}).join(' → ')}${o.minutes!=null?` · estimativa ${Math.round(o.minutes)} min`:''}`:'Selecione o motoboy e os pedidos, depois clique em Otimizar rota.';
+ el.textContent=o?`Ordem ${o.manual?'de seleção (sem coordenadas)':'otimizada'}: ${o.ids.map((id,i)=>{const p=state.pedidos.find(x=>x.id===id);return `${i+1}. #${p?.numero||'?'} ${p?.cliente_nome||''}`}).join(' → ')}${o.minutes!=null?` · estimativa ${Math.round(o.minutes)} min`:''}`:'Selecione o motoboy e os pedidos, depois clique em Otimizar rota.';
  $('sendRoute').disabled=!o;
 }
 async function optimizeSelected(){
@@ -177,7 +177,14 @@ async function optimizeSelected(){
  if(!validLoc(loc))return optimizeFeedback('Sem coordenadas de GPS do motoboy. Ative o rastreamento no Android.',true);
  const orders=ids.map(id=>state.pedidos.find(p=>p.id===id));
  if(orders.some(p=>!p||p.loja_id!==store||p.status!=='pendente'))return optimizeFeedback('Há pedidos que não estão mais pendentes nesta loja. Atualize a seleção.',true);
- if(orders.some(p=>p.latitude==null||p.longitude==null||!Number.isFinite(Number(p.latitude))||!Number.isFinite(Number(p.longitude))))return optimizeFeedback('Há pedidos sem latitude/longitude. Confira as coordenadas na aba Pedidos.',true);
+ // Latitude/longitude dos pedidos são opcionais; se faltar, manter ordem de seleção.
+ const hasCoords=p=>p.latitude!=null&&p.longitude!=null&&Number.isFinite(Number(p.latitude))&&Number.isFinite(Number(p.longitude))&&Math.abs(Number(p.latitude))<=90&&Math.abs(Number(p.longitude))<=180;
+ if(orders.some(p=>!hasCoords(p))){
+  state.optimized={ids:[...ids],driver,store,origin:null,minutes:null,manual:true};
+  updateOptimizationUI();
+  optimizeFeedback('Pedidos sem coordenadas: ordem de seleção mantida. Confira os endereços e envie a rota.');
+  return;
+ }
  const coords=[[Number(loc.longitude),Number(loc.latitude)],...orders.map(p=>[Number(p.longitude),Number(p.latitude)])];
  const button=$('optimizeRoute');button.disabled=true;button.textContent='Calculando pelas ruas...';optimizeFeedback('Consultando as ruas para calcular a melhor sequência...');
  try{
@@ -283,7 +290,7 @@ function waPayment(block){
 function previewWa(){
  try{
   waDraft=parseWa($('waText').value);
-  $('waPreview').innerHTML=waDraft.map((x,i)=>`<div class="wa-item"><b>Ponto ${x.indice} — Pedido #${esc(x.numero)}</b><label>Cliente<input data-wa="${i}:cliente_nome" value="${esc(x.cliente_nome)}"></label><label>Endereço<input data-wa="${i}:endereco" value="${esc(x.endereco)}"></label><label>Complemento<input data-wa="${i}:complemento" value="${esc(x.complemento)}"></label><label>Referência<input data-wa="${i}:referencia" value="${esc(x.referencia)}"></label><label>Localizador<input data-wa="${i}:localizador" value="${esc(x.localizador)}"></label><div class="two"><label>Latitude<input data-wa="${i}:latitude" value="${esc(x.latitude??'')}"></label><label>Longitude<input data-wa="${i}:longitude" value="${esc(x.longitude??'')}"></label></div><label>Pagamento<select data-wa="${i}:pagamento_status"><option value="pago" ${x.pagamento_status==='pago'?'selected':''}>Pago online</option><option value="cobrar" ${x.pagamento_status==='cobrar'?'selected':''}>Cobrar na entrega</option><option value="nao_informado" ${x.pagamento_status==='nao_informado'?'selected':''}>Não informado</option></select></label><label>Forma de pagamento<input data-wa="${i}:pagamento_forma" value="${esc(x.pagamento_forma)}"></label><label>Total do pedido (R$)<input type="number" min="0" step="0.01" data-wa="${i}:pagamento_valor" value="${esc(x.pagamento_valor??'')}"></label><small>O total do pedido não é o valor recebido pelo motoboy.</small><small>${x.latitude!=null&&x.longitude!=null?'📍 Coordenadas presentes':'⚠ Sem coordenadas; informe manualmente para mostrar no mapa'}</small></div>`).join('')||'<p class="muted">Nenhum pedido reconhecido. Confira se a mensagem contém Pedido: #1 ou 1º Pedido (#27).</p>';
+  $('waPreview').innerHTML=waDraft.map((x,i)=>`<div class="wa-item"><b>Ponto ${x.indice} — Pedido #${esc(x.numero)}</b><label>Cliente<input data-wa="${i}:cliente_nome" value="${esc(x.cliente_nome)}"></label><label>Endereço<input data-wa="${i}:endereco" value="${esc(x.endereco)}"></label><label>Complemento<input data-wa="${i}:complemento" value="${esc(x.complemento)}"></label><label>Referência<input data-wa="${i}:referencia" value="${esc(x.referencia)}"></label><label>Localizador<input data-wa="${i}:localizador" value="${esc(x.localizador)}"></label><div class="two"><label>Latitude<input data-wa="${i}:latitude" value="${esc(x.latitude??'')}"></label><label>Longitude<input data-wa="${i}:longitude" value="${esc(x.longitude??'')}"></label></div><label>Pagamento<select data-wa="${i}:pagamento_status"><option value="pago" ${x.pagamento_status==='pago'?'selected':''}>Pago online</option><option value="cobrar" ${x.pagamento_status==='cobrar'?'selected':''}>Cobrar na entrega</option><option value="nao_informado" ${x.pagamento_status==='nao_informado'?'selected':''}>Não informado</option></select></label><label>Forma de pagamento<input data-wa="${i}:pagamento_forma" value="${esc(x.pagamento_forma)}"></label><label>Total do pedido (R$)<input type="number" min="0" step="0.01" data-wa="${i}:pagamento_valor" value="${esc(x.pagamento_valor??'')}"></label><small>O total do pedido não é o valor recebido pelo motoboy.</small><small>${x.latitude!=null&&x.longitude!=null?'📍 Coordenadas presentes':'Sem coordenadas: cadastro e despacho permitidos; sem marcador no mapa'}</small></div>`).join('')||'<p class="muted">Nenhum pedido reconhecido. Confira se a mensagem contém Pedido: #1 ou 1º Pedido (#27).</p>';
   $('waSaveBtn').disabled=!waDraft.length;
   toast(waDraft.length?`${waDraft.length} pedido(s) reconhecido(s). Confira e salve.`:'Nenhum pedido reconhecido.',!waDraft.length);
  }catch(e){waDraft=[];$('waSaveBtn').disabled=true;$('waPreview').textContent='Erro ao ler mensagem: '+errorText(e);toast(errorText(e),true);}

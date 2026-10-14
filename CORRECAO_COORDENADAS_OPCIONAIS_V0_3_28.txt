@@ -1,0 +1,7 @@
+Rota Fácil Painel V0.3.28
+Latitude e longitude dos pedidos são opcionais.
+Se algum pedido não tiver coordenadas, a otimização mantém a ordem de seleção e permite envio ao motoboy, sem cálculo viário.
+Com coordenadas completas, mantém otimização por ruas.
+GPS do motoboy continua necessário para aparecer online.
+O APK do motoboy não foi alterado; navegação por endereço deve ser verificada nele.
+Sem SQL nesta atualização.
