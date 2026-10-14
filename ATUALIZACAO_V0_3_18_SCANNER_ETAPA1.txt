@@ -1,0 +1,17 @@
+ROTA FÁCIL — PAINEL V0.3.18 — SCANNER ETAPA 1
+
+1. Publique os arquivos do ZIP no mesmo local do painel atual (faça backup antes).
+2. Entre no painel pelo navegador do celular, usando conta autorizada da loja.
+3. Abra Pedidos > Scanner de etiquetas e tire a foto.
+4. Confira a foto, toque em Cadastrar pedido desta etiqueta e digite os dados no formulário existente.
+5. Salve; o pedido vai para a tabela pedidos no Supabase, vinculado à empresa e loja selecionada.
+6. No computador, o painel consulta os pedidos automaticamente (intervalo existente de 5 segundos).
+
+LIMITAÇÕES DESTA ETAPA
+- Não faz OCR/leitura automática ainda.
+- Não envia nem armazena a foto no Supabase.
+- Não cria link QR temporário ou login especial para scanner.
+- Para usar em outra loja, entrar com a conta autorizada dessa loja.
+- O fluxo de otimização de rotas existente ainda exige latitude/longitude.
+- Nenhuma alteração SQL é necessária para esta etapa.
+- Não foram alteradas as regras do Android nem o financeiro.

@@ -467,3 +467,26 @@ if(recoveryLink){
   });
 }else{start().catch(e=>toast(errorText(e),true));}
 
+
+// Scanner de etiquetas: captura local e cadastro conferido. OCR e upload não implementados nesta etapa.
+let scannerObjectUrl=null;
+function scannerClearPhoto(){
+ if(scannerObjectUrl){URL.revokeObjectURL(scannerObjectUrl);scannerObjectUrl=null;}
+ $('scannerPhoto').value='';$('scannerImage').removeAttribute('src');
+ $('scannerPreview').classList.add('hidden');$('scannerNewOrder').disabled=true;$('scannerClear').disabled=true;
+}
+$('scannerPhoto').addEventListener('change',ev=>{
+ const file=ev.target.files?.[0];
+ if(scannerObjectUrl){URL.revokeObjectURL(scannerObjectUrl);scannerObjectUrl=null;}
+ if(!file){scannerClearPhoto();return;}
+ if(!file.type.startsWith('image/')){toast('Selecione uma imagem da etiqueta.',true);scannerClearPhoto();return;}
+ if(file.size>12*1024*1024){toast('Foto muito grande. Use uma imagem de até 12 MB.',true);scannerClearPhoto();return;}
+ scannerObjectUrl=URL.createObjectURL(file);$('scannerImage').src=scannerObjectUrl;
+ $('scannerPreview').classList.remove('hidden');$('scannerNewOrder').disabled=false;$('scannerClear').disabled=false;
+});
+$('scannerClear').addEventListener('click',scannerClearPhoto);
+$('scannerNewOrder').addEventListener('click',()=>{
+ if(!scannerObjectUrl||!state.empresa){toast('Fotografe uma etiqueta primeiro.',true);return;}
+ $('orderForm').reset();$('orderDialog').showModal();
+ toast('Confira a foto e preencha os dados da etiqueta antes de salvar.');
+});
