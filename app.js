@@ -499,8 +499,9 @@ function scannerRenderGallery(){
 function scannerSelect(i){
  scannerSelected=i;const item=scannerPhotos[i];scannerObjectUrl=item?.url||null;scannerOcrResult=item?.data||null;
  if(!item){$('scannerPreview').classList.add('hidden');$('scannerOcrDetails').classList.add('hidden');$('scannerOcrStatus').textContent='';}
- else{$('scannerImage').src=item.url;$('scannerPreview').classList.remove('hidden');$('scannerOcrText').textContent=item.text||'Leitura pendente';$('scannerOcrDetails').classList.toggle('hidden',!item.text);$('scannerOcrStatus').textContent=item.message||'Aguardando leitura…';}scannerRenderFields(item);scannerRenderGallery();
+ else{$('scannerImage').src=item.previewProcessed&&item.processed?item.processed:item.url;$('scannerPreview').classList.remove('hidden');$('scannerOcrText').textContent=item.text||'Leitura pendente';$('scannerOcrDetails').classList.toggle('hidden',!item.text);$('scannerOcrStatus').textContent=item.message||'Aguardando leitura…';}scannerUpdatePreview(item);scannerRenderFields(item);scannerRenderGallery();
 }
+function scannerUpdatePreview(item){if(item&&scannerPhotos[scannerSelected]===item){$('scannerImage').src=item.previewProcessed&&item.processed?item.processed:item.url;const btn=$('scannerTogglePreview');if(btn){btn.disabled=!item.processed;btn.textContent=item.previewProcessed?'Ver foto original':'Ver imagem tratada';}}}
 function scannerShowPhoto(file){
  if(!file||!file.type.startsWith('image/')){toast('Foto inválida.',true);return;}
  if(file.size>12*1024*1024){toast('Foto muito grande (máximo 12 MB).',true);return;}
@@ -570,59 +571,102 @@ function scannerLineValue(lines,label){
  return '';
 }
 function scannerParse(text){
- const raw=String(text||'').replace(/\u00a0/g,' ');
- const lines=raw.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
- const pick=rx=>{const m=raw.match(rx);return m?(m[1]||'').trim():''};
- const value=rx=>{for(let i=0;i<lines.length;i++){const m=lines[i].match(rx);if(m)return (m[1]||lines[i+1]||'').trim();}return ''};
- // Entrega Parceira / Olo é pedido da loja, não plataforma iFood.
+ const raw=String(text||'').replace(/\u00a0/g,' ').replace(/[‐‑–—]/g,'-');
+ const lines=raw.split(/\r?\n/).map(v=>v.trim()).filter(Boolean);
+ const find=(re)=>{const m=raw.match(re);return m?String(m[1]||'').trim():''};
+ const line=(re)=>{for(const l of lines){const m=l.match(re);if(m)return String(m[1]||'').trim()}return ''};
+ const clean=v=>String(v||'').replace(/^(?:nome|cliente|endere[cç]o|cidade|localizador)\s*:\s*/i,'').trim();
  const olo=/\b(?:olo|entrega\s+parceira)\b/i.test(raw);
  const platform=olo?'outro':/99\s*food|didi\s*delivery/i.test(raw)?'99food':/\bi\s*food\b/i.test(raw)?'ifood':'outro';
  const kind=olo?'Entrega da loja (Olo)':platform==='99food'?'99Food':platform==='ifood'?'iFood':'Não identificada';
- let number=pick(/\*{2,}\s*#?\s*([A-Z0-9-]{1,25})\s*\*{2,}/i);
- if(!number)number=pick(/#{1,2}\s*([0-9]{1,12})\b/);
- if(!number)number=value(/(?:n[º°o.]?\s*(?:do\s*)?pedido|pedido\s*n[º°o.]?|n[uú]mero\s*do\s*pedido)\s*[:#-]?\s*(\w[\w-]*)/i);
- number=number.replace(/^#/,'').slice(0,40);
- let client=value(/^(?:cliente|nome\s*do\s*cliente|customer)\s*[:\-]\s*(.+)$/i);
- if(!client)client=value(/^(?:cliente|nome\s*do\s*cliente|customer)\s*:?\s*$/i);
- let street=lines.find(l=>/^(?:rua|r\.|avenida|av\.|travessa|alameda|pra[cç]a|rodovia)\s/i.test(l))||'';
- if(!street)street=value(/^endere[cç]o(?:\s*de\s*entrega)?\s*[:\-]\s*(.+)$/i);
- const district=value(/^bairro\s*[:\-]\s*(.+)$/i);
- const city=value(/^(?:cidade|munic[ií]pio)\s*[:\-]\s*(.+)$/i);
- const complement=value(/^complemento\s*[:\-]\s*(.+)$/i);
- const reference=value(/^refer[eê]ncia\s*[:\-]\s*(.+)$/i);
- const fullAddress=[street,district,city].filter(Boolean).join(', ');
- let locator=platform==='outro'?'':value(/^localizador\s*[:#\-]?\s*(\d[\d\s-]{3,})/i);
- if(!locator&&platform!=='outro')locator=pick(/localizador\s*\n\s*(\d[\d\s-]{3,})/i);
- const forecast=value(/(?:entrega\s*prevista|previs[aã]o\s*de\s*entrega)\s*[:\-]\s*(.+)$/i);
- const created=pick(/(?:criado\s*em|data\s*(?:e\s*hora)?\s*do\s*pedido|hora\s*do\s*pedido)\s*[:\-]?\s*([0-9/:\s-]{5,25})/i);
- const total=pick(/(?:valor\s*total(?:\s*do\s*pedido)?|total\s*do\s*pedido|total\s*a\s*pagar|^total)\s*[:\-]?\s*R?\$?\s*([\d.,]+)/im);
- const paid=/pagamento\s+online\s+j[aá]\s+realizado|pago\s+online|pagamento\s+realizado|j[aá]\s+pago|pix\s+online|n[aã]o\s+cobrar\s+na\s+entrega|cobrar\s+do\s+cliente\s*R?\$?\s*0[,.]00/i.test(raw);
- const charge=/cobrar\s+(?:na\s+entrega|do\s+cliente)|pagamento\s+(?:na\s+entrega|pendente)|dinheiro\s+na\s+entrega|pagar\s+na\s+entrega/i.test(raw);
+ // OCR pode transformar asteriscos em barras, pontos ou espaços.
+ let number=find(/(?:\*|[✱★]){2,}\s*[#＃]?\s*([0-9]{1,10})\s*(?:\*|[✱★]){2,}/i);
+ if(!number)number=find(/(?:^|\n)\s*(?:[\*✱★|]{2,}\s*)?[#＃]\s*([0-9]{1,10})\b/m);
+ if(!number)number=find(/(?:^|\n)[^\n]{0,15}[#＃]\s*([0-9]{1,8})\s*(?:[\*✱★|]{1,}|$)/m);
+ if(!number)number=find(/\bpedido\s*[:#nº°.-]*\s*#?\s*([0-9]{1,10})\b/i);
+ let client=clean(line(/^(?:nome|cliente|nome\s+do\s+cliente)\s*[:;.-]\s*(.+)$/i));
+ if(!client){const ix=lines.findIndex(v=>/^(?:nome|cliente)\s*:?$/i.test(v));if(ix>=0)client=clean(lines[ix+1]);}
+ let street=clean(line(/^(?:endere[cç]o|endereco)\s*[:;.-]\s*(.+)$/i));
+ if(!street)street=lines.find(v=>/^(?:r\.|rua|av\.|avenida|travessa|alameda|pra[cç]a)\s/i.test(v))||'';
+ const district=clean(line(/^bairro\s*[:;.-]\s*(.+)$/i));
+ const city=clean(line(/^cidade\s*[:;.-]\s*(.+)$/i));
+ const complement=clean(line(/^complemento\s*[:;.-]\s*(.+)$/i));
+ const reference=clean(line(/^refer[eê]ncia\s*[:;.-]\s*(.+)$/i));
+ let fullAddress=[street,district,city].filter(Boolean).join(', ');
+ // Não incorporar rótulos subsequentes no endereço.
+ fullAddress=fullAddress.replace(/\s+(?:cidade|complemento|previs[aã]o|localizador)\s*:.*/i,'').trim();
+ let locator=platform==='outro'?'':find(/localizad[o0]r\s*[:;.-]?\s*([0-9][0-9\s]{5,15})/i).replace(/\s+/g,'');
+ const forecast=find(/(?:previs[aã]o|entrega\s+prevista)\s*[:;.-]?\s*([0-2]?\d\s*[:h.]\s*[0-5]\d\s*[-a]\s*[0-2]?\d\s*[:h.]\s*[0-5]\d)/i).replace(/\s+/g,'');
+ let created=find(/criad[o0]\s+em\s*[:;.-]?\s*([0-3]?\d\s*\/\s*[01]?\d\s*\/\s*20\d\d\s+[0-2]?\d\s*[:.]\s*[0-5]\d\s*[:.]\s*[0-5]\d)/i).replace(/\s+/g,' ').replace(/\s*[:.]\s*/g,':');
+ if(!created)created=find(/criad[o0]\s+em\s*[:;.-]?\s*([0-3]?\d\s*\/\s*[01]?\d\s*\/\s*20\d\d\s+[0-2]?\d\s*[:.]\s*[0-5]\d)/i);
+ // TOTAL isolado, nunca "Total dos itens", "Total de pedidos" ou entrega.
+ let total='';
+ for(const l of lines){const m=l.match(/^\s*T[O0]T[A4]L\s*[:;.]?\s*(?:R\s*\$\s*)?([0-9]{1,5}[.,][0-9]{2})\s*$/i);if(m){total=m[1];break;}}
+ if(!total)total=find(/(?:valor\s+total(?:\s+do\s+pedido)?|total\s+do\s+pedido)\s*[:;.]?\s*R?\s*\$?\s*([0-9]{1,5}[.,][0-9]{2})/i);
+ if(!total){const ix=lines.findIndex(v=>/^T[O0]T[A4]L\s*[:;.]?\s*$/i.test(v));if(ix>=0)total=(lines[ix+1]||'').match(/(?:R\s*\$\s*)?([0-9]{1,5}[.,][0-9]{2})/)?.[1]||'';}
+ if(!total)total=find(/(?:^|\n)\s*T[O0]T[A4]L\s*[:;.]?\s*\n\s*(?:R\s*\$\s*)?([0-9]{1,5}[.,][0-9]{2})/im);
+ const paid=/j[aá]\s+pago\s+online|pago\s+online|pagamento\s+realizado|n[aã]o\s+cobrar\s+na\s+entrega|cobrar\s+do\s+cliente\s*R?\s*\$?\s*0[,.]00/i.test(raw);
+ const charge=/cobrar\s+(?:na\s+entrega|do\s+cliente)|pagamento\s+na\s+entrega|dinheiro\s+na\s+entrega/i.test(raw);
  const payment=paid?'pago':charge?'cobrar':'indefinido';
- const products=lines.filter(l=>/^\d+\s*[x×]\s+\S/.test(l)||/^\d+\s+\S.{7,}/.test(l)&&/(burger|açaí|tropeiro|fritas|combo)/i.test(l));
- return {platform,kind,number,client,fullAddress,complement,reference,locator,forecast,created,total,payment,products,text:raw};
+ const paymentMethod=find(/forma\s+de\s+pagamento\s*[:;.-]\s*([^\n]+)/i);
+ const products=lines.filter(v=>/^\s*\d+\s*[x×]\s+\S/i.test(v)||/^\s*\d+\s+(?!pedidos?\b)\S.{8,}/i.test(v)&&/(burger|a[cç]a[ií]|tropeiro|fritas|combo)/i.test(v));
+ return {platform,kind,number,client,fullAddress,complement,reference,locator,forecast,created,total,payment,paymentMethod,products,text:raw};
 }
 function scannerRenderFields(item){
  const el=$('scannerFields');if(!el)return;
  const d=item?.data;if(!d){el.textContent='Fotografe uma etiqueta para conferir os campos reconhecidos.';return;}
- const fields=[['Tipo',d.kind],['Pedido',d.number?'#'+d.number:'⚠ Não encontrado'],['Criado em',d.created],['Cliente',d.client||'⚠ Não encontrado'],['Endereço',d.fullAddress||'⚠ Não encontrado'],['Complemento',d.complement],['Referência',d.reference],['Localizador',d.locator],['Entrega prevista',d.forecast],['Valor total',d.total?'R$ '+d.total:'⚠ Conferir'],['Pagamento',d.payment==='pago'?'🟢 PAGO ONLINE':d.payment==='cobrar'?'🔴 COBRAR NA ENTREGA':'⚠ NÃO IDENTIFICADO'],['Produtos',(d.products||[]).join(' | ')]];
- el.replaceChildren();fields.filter(([k,v])=>v||['Localizador','Criado em','Entrega prevista'].includes(k)).forEach(([k,v])=>{const row=document.createElement('div');row.style.cssText='padding:5px 0;border-bottom:1px solid #444;overflow-wrap:anywhere';const strong=document.createElement('strong');strong.textContent=k+': ';row.append(strong,document.createTextNode(v||'—'));el.append(row);});
+ const fields=[['Tipo',d.kind],['Pedido',d.number?'#'+d.number:'⚠ Não encontrado'],['Criado em',d.created||'⚠ Conferir'],['Cliente',d.client||'⚠ Não encontrado'],['Endereço',d.fullAddress||'⚠ Não encontrado'],['Complemento',d.complement],['Referência',d.reference],['Localizador',d.locator],['Entrega prevista',d.forecast||'⚠ Conferir'],['Valor total',d.total?'R$ '+d.total:'⚠ Conferir'],['Pagamento',d.payment==='pago'?'🟢 PAGO ONLINE':d.payment==='cobrar'?'🔴 COBRAR NA ENTREGA':'⚠ NÃO IDENTIFICADO'],['Forma de pagamento',d.paymentMethod],['Produtos',(d.products||[]).join(' | ')]];
+ el.replaceChildren();fields.filter(([k,v])=>v||k==='Localizador'&&d.platform!=='outro').forEach(([k,v])=>{const row=document.createElement('div');row.style.cssText='padding:5px 0;border-bottom:1px solid #444;overflow-wrap:anywhere';const strong=document.createElement('strong');strong.textContent=k+': ';row.append(strong,document.createTextNode(v||'—'));el.append(row);});
+ const warn=document.createElement('p');warn.style.cssText='font-size:13px;color:#fbbf24;margin-top:10px';warn.textContent='Confira especialmente o nome da rua, número, valor e número do pedido. OCR pode trocar letras parecidas. Use “Conferir e cadastrar pedido” para corrigir antes de salvar.';el.append(warn);
 }
 
-async function scannerPrepare(file, angle=0, contrast=1.6){
+// Digitalização local: recorte do papel (quando detectável), redução de sombras e realce do texto.
+async function scannerPrepare(file, angle=0, mode='document'){
  const image=await createImageBitmap(file);
  try{
   const sideways=angle===90||angle===270;
-  const width=sideways?image.height:image.width,height=sideways?image.width:image.height;
-  const scale=Math.min(2.5,Math.max(1,2000/Math.max(width,height)));
-  const canvas=document.createElement('canvas');canvas.width=Math.round(width*scale);canvas.height=Math.round(height*scale);
-  const ctx=canvas.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,canvas.width,canvas.height);
-  ctx.translate(canvas.width/2,canvas.height/2);ctx.rotate(angle*Math.PI/180);
-  ctx.filter=`grayscale(1) contrast(${contrast}) brightness(1.08)`;
+  const w=sideways?image.height:image.width,h=sideways?image.width:image.height;
+  const scale=Math.min(2.6,Math.max(1,2200/Math.max(w,h)));
+  const c=document.createElement('canvas');c.width=Math.round(w*scale);c.height=Math.round(h*scale);
+  const ctx=c.getContext('2d',{willReadFrequently:true});ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);
+  ctx.translate(c.width/2,c.height/2);ctx.rotate(angle*Math.PI/180);
   ctx.drawImage(image,-image.width*scale/2,-image.height*scale/2,image.width*scale,image.height*scale);
-  return canvas;
+  ctx.setTransform(1,0,0,1,0,0);
+  if(mode==='original')return c;
+  const W=c.width,H=c.height;
+  const original=ctx.getImageData(0,0,W,H),px=original.data;
+  // Só recorta automaticamente quando há contraste claro entre o papel e o fundo.
+  const luma=(x,y)=>{const k=(Math.min(H-1,Math.max(0,y))*W+Math.min(W-1,Math.max(0,x)))*4;return (px[k]*.299+px[k+1]*.587+px[k+2]*.114)};
+  const corners=[luma(W*.03,H*.03),luma(W*.97,H*.03),luma(W*.03,H*.97),luma(W*.97,H*.97)].sort((a,b)=>a-b);
+  const bg=(corners[1]+corners[2])/2,mid=luma(W*.5,H*.5);
+  let crop={x:0,y:0,w:W,h:H};
+  if(mid-bg>50){
+   const threshold=Math.min(205,bg+(mid-bg)*.40);let minX=W,minY=H,maxX=0,maxY=0,n=0;
+   for(let y=0;y<H;y+=Math.max(3,Math.floor(H/300))){for(let x=0;x<W;x+=Math.max(3,Math.floor(W/300))){
+    if(luma(x,y)>threshold){minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);n++;}
+   }}
+   if(n>200&&(maxX-minX)>.28*W&&(maxY-minY)>.35*H){
+    const pad=Math.round(Math.min(W,H)*.018);crop={x:Math.max(0,minX-pad),y:Math.max(0,minY-pad),w:Math.min(W,maxX+pad)-Math.max(0,minX-pad),h:Math.min(H,maxY+pad)-Math.max(0,minY-pad)};
+   }
+  }
+  const clipped=document.createElement('canvas');clipped.width=crop.w;clipped.height=crop.h;
+  const cctx=clipped.getContext('2d',{willReadFrequently:true});cctx.drawImage(c,crop.x,crop.y,crop.w,crop.h,0,0,crop.w,crop.h);
+  // Fundo desfocado representa iluminação/sombra; normalização local destaca tinta térmica.
+  const blur=document.createElement('canvas');blur.width=crop.w;blur.height=crop.h;
+  const bctx=blur.getContext('2d',{willReadFrequently:true});bctx.filter='grayscale(1) blur(26px)';bctx.drawImage(clipped,0,0);
+  const src=cctx.getImageData(0,0,crop.w,crop.h),data=src.data,base=bctx.getImageData(0,0,crop.w,crop.h).data;
+  for(let i=0;i<data.length;i+=4){
+   const lum=data[i]*.299+data[i+1]*.587+data[i+2]*.114;
+   const local=Math.max(65,base[i]*.299+base[i+1]*.587+base[i+2]*.114);
+   let v=Math.max(0,Math.min(255,((lum/local)-1)*230+238));
+   if(mode==='blackwhite')v=v<165?0:255;
+   data[i]=data[i+1]=data[i+2]=v;data[i+3]=255;
+  }
+  cctx.putImageData(src,0,0);
+  return clipped;
  }finally{image.close();}
 }
+
 function scannerQuality(d){return (d.number?5:0)+(d.client?4:0)+(d.fullAddress?5:0)+(d.total?4:0)+(d.payment!=='indefinido'?3:0)+(d.locator?2:0)+(d.created?2:0)+(d.products.length?2:0);}
 async function scannerReadPhoto(item){
  if(item.removed)return;
@@ -631,20 +675,27 @@ async function scannerReadPhoto(item){
  try{
   await scannerLoadOcr();if(item.removed)return;
   worker=await Tesseract.createWorker('por+eng',1);
-  const variants=[[0,1.6],[0,1.12],[90,1.6],[270,1.6]];
-  let best=null;
+  const variants=[[0,'document'],[0,'original'],[0,'blackwhite'],[90,'document'],[270,'document']];
+  let best=null;const candidates=[];
   for(let i=0;i<variants.length;i++){
    if(item.removed)return;
    item.message=`Analisando foto ${i+1}/${variants.length} (sem IA paga)…`;
    if(scannerPhotos[scannerSelected]===item)$('scannerOcrStatus').textContent=item.message;
    const canvas=await scannerPrepare(item.file,...variants[i]);
+   if(i===0){item.processed=canvas.toDataURL('image/jpeg',0.87);if(scannerPhotos[scannerSelected]===item)scannerUpdatePreview(item);}
    const res=await worker.recognize(canvas);
    const txt=res.data.text||'', parsed=scannerParse(txt),score=scannerQuality(parsed);
+   candidates.push({txt,parsed,score});
    if(!best||score>best.score)best={txt,parsed,score};
-   if(score>=23)break;
   }
   if(item.removed)return;
-  item.text=best?.txt||'';item.data=best?.parsed||scannerParse('');
+  item.text=candidates.map((c,i)=>'=== LEITURA '+(i+1)+' ===\n'+c.txt).join('\n\n');
+  item.data={...best.parsed};
+  for(const key of ['number','created','client','fullAddress','locator','forecast','total','paymentMethod','complement','reference']){
+   if(!item.data[key]){const match=candidates.filter(c=>c.parsed[key]).sort((a,b)=>b.score-a.score)[0];if(match)item.data[key]=match.parsed[key];}
+  }
+  if(item.data.payment==='indefinido'&&candidates.some(c=>c.parsed.payment==='pago'))item.data.payment='pago';
+  item.data.products=[...new Set(candidates.flatMap(c=>c.parsed.products||[]))].slice(0,20);
   const required=[item.data.number,item.data.client,item.data.fullAddress].filter(Boolean).length;
   item.status=required===3?'ok':'erro';
   item.message=`${required}/3 campos principais identificados. Confira e corrija antes de salvar.`;
@@ -652,6 +703,7 @@ async function scannerReadPhoto(item){
  finally{if(worker)try{await worker.terminate()}catch(e){}}
  if(scannerPhotos[scannerSelected]===item)scannerSelect(scannerSelected);else scannerRenderGallery();
 }
+$('scannerTogglePreview').addEventListener('click',()=>{const item=scannerPhotos[scannerSelected];if(!item||!item.processed)return;item.previewProcessed=!item.previewProcessed;scannerUpdatePreview(item);});
 $('scannerNewOrder').addEventListener('click',()=>{
  if(!scannerObjectUrl||!state.empresa){toast('Fotografe uma etiqueta primeiro.',true);return;}
  $('orderForm').reset();

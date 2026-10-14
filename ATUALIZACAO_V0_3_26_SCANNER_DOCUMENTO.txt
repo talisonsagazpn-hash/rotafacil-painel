@@ -1,0 +1,3 @@
+Rota Fácil V0.3.26 — Scanner documento gratuito.
+Melhoria local: recorte do papel quando fundo contrastante, correção de iluminação e sombras, alto contraste e preto/branco; cinco tentativas OCR. Botão para alternar foto original e imagem tratada. Sem OpenAI, sem SQL.
+Atenção: recorte e correção de perspectiva completa não são equivalentes ao CamScanner; verifique a imagem tratada e os campos antes de salvar. Valor total, pagamento e produtos ainda não são persistidos pelo cadastro atual.
