@@ -1,0 +1,10 @@
+Rota Fácil Painel V0.3.20 — OCR experimental
+
+1. Publique todos os arquivos do ZIP no GitHub Pages.
+2. Abra Pedidos > Scanner, permita câmera, fotografe e aguarde a leitura.
+3. Toque em Conferir e cadastrar pedido, corrija os campos e salve.
+4. A leitura é local via Tesseract.js (carregado pela internet), não envia a foto para o Supabase.
+5. O OCR pode errar nomes, números e endereços. Confira sempre antes de salvar.
+6. Sem novo SQL. Latitude/longitude ocultas apenas no cadastro vindo do scanner.
+7. Pagamento, previsão e itens são identificados parcialmente na prévia/texto OCR, mas NÃO são gravados como campos adicionais: o banco atual não tem essas colunas confirmadas.
+8. Não testado fisicamente em dispositivo Android; requer validação em fotos reais.

@@ -1,0 +1,8 @@
+Rota Fácil Painel V0.3.21 — Galeria do Scanner
+- Fotos são acumuladas em uma fila, sem substituir as anteriores.
+- Contador e miniaturas com seleção e exclusão individual.
+- OCR processa cada foto separadamente, em sequência.
+- Ao selecionar uma foto, é possível conferir e cadastrar aquele pedido.
+- Cada pedido deve ser conferido e salvo individualmente nesta versão; ainda não há envio em lote automático.
+- Fotos ficam somente na sessão atual do navegador; fechar/recarregar a página limpa a fila.
+- Sem SQL novo. Publicar todos os arquivos do ZIP no GitHub Pages.

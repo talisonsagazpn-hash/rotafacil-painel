@@ -158,7 +158,7 @@ async function saveOutside(ev){
  $('routeStore').dataset.selected=payload.loja_id;state.selected=new Set([data.id]);page('rotas');
  toast('Corrida por fora criada e selecionada. Escolha o motoboy e envie a rota.');
 }
-async function saveOrder(ev){ev.preventDefault();const payload={empresa_id:state.empresa.id,loja_id:$('orderStore').value,numero:$('orderNumber').value.trim()||null,plataforma:$('orderPlatform').value,cliente_nome:$('orderClient').value.trim(),endereco:$('orderAddress').value.trim(),complemento:$('orderComplement').value.trim()||null,referencia:$('orderReference').value.trim()||null,localizador:$('orderLocator').value.trim()||null,latitude:$('orderLat').value?Number($('orderLat').value):null,longitude:$('orderLng').value?Number($('orderLng').value):null};const {error}=await sb.from('pedidos').insert(payload);if(error)return toast(errorText(error),true);$('orderDialog').close();$('orderForm').reset();toast('Pedido cadastrado com sucesso!');await fetchAll()}
+async function saveOrder(ev){ev.preventDefault();const payload={empresa_id:state.empresa.id,loja_id:$('orderStore').value,numero:$('orderNumber').value.trim()||null,plataforma:$('orderPlatform').value,cliente_nome:$('orderClient').value.trim(),endereco:$('orderAddress').value.trim(),complemento:$('orderComplement').value.trim()||null,referencia:$('orderReference').value.trim()||null,localizador:$('orderLocator').value.trim()||null,latitude:$('orderLat').value?Number($('orderLat').value):null,longitude:$('orderLng').value?Number($('orderLng').value):null};const {error}=await sb.from('pedidos').insert(payload);if(error)return toast(errorText(error),true);if(scannerFromPhoto&&scannerPhotos[scannerSelected]){scannerPhotos[scannerSelected].status='salvo';scannerPhotos[scannerSelected].message='Pedido cadastrado no painel.';scannerRenderGallery();}$('orderDialog').close();$('orderForm').reset();toast('Pedido cadastrado com sucesso!');await fetchAll()}
 // Mesma estrategia do Android: matriz OSRM de duracao viaria e vizinho mais proximo.
 function invalidateOptimization(){state.optimized=null;updateOptimizationUI()}
 function optimizeFeedback(message,bad=false){const el=$('optimizeFeedback');if(el){el.textContent=message;el.style.color=bad?'#ff9b9b':'#9be7bd';el.style.display='block'}if(bad)toast(message,true)}
@@ -471,6 +471,8 @@ if(recoveryLink){
 // Scanner de etiquetas: captura local e cadastro conferido. OCR e upload não implementados nesta etapa.
 let scannerObjectUrl=null;
 let scannerCameraStream=null;
+let scannerOcrResult=null;let scannerOcrToken=0;let scannerFromPhoto=false;
+const scannerPhotos=[];let scannerSelected=-1;let scannerQueue=Promise.resolve();
 function scannerStopCamera(){
  if(scannerCameraStream){scannerCameraStream.getTracks().forEach(t=>t.stop());scannerCameraStream=null;}
  $('scannerCameraVideo').srcObject=null;
@@ -479,19 +481,43 @@ function scannerStopCamera(){
  $('scannerCloseCamera').classList.add('hidden');
  $('scannerOpenCamera').classList.remove('hidden');
 }
+function scannerRenderGallery(){
+ $('scannerPhotoCount').textContent=`Fotos capturadas: ${scannerPhotos.length}`;
+ $('scannerGallery').replaceChildren();
+ scannerPhotos.forEach((item,i)=>{
+  const wrapper=document.createElement('div');wrapper.style.cssText='flex:0 0 108px;position:relative;text-align:center';
+  const btn=document.createElement('button');btn.type='button';btn.style.cssText=`display:block;width:108px;padding:3px;border:2px solid ${i===scannerSelected?'#38c975':'#555'};border-radius:10px;background:#171b1d`;
+  const img=document.createElement('img');img.src=item.url;img.alt='Etiqueta '+(i+1);img.style.cssText='width:100px;height:90px;object-fit:cover;border-radius:7px';btn.append(img);
+  btn.addEventListener('click',()=>scannerSelect(i));wrapper.append(btn);
+  const caption=document.createElement('div');caption.style.cssText='font-size:11px;line-height:1.3';caption.textContent=`#${i+1} · ${item.status==='ok'?'✓ Lida':item.status==='erro'?'⚠ Erro':item.status==='salvo'?'✓ Salva':'⌛ Lendo'}`;wrapper.append(caption);
+  const remove=document.createElement('button');remove.type='button';remove.textContent='Excluir';remove.style.cssText='font-size:11px;padding:3px 7px';remove.addEventListener('click',()=>scannerRemove(i));wrapper.append(remove);
+  $('scannerGallery').append(wrapper);
+ });
+ $('scannerNewOrder').disabled=scannerSelected<0||scannerPhotos[scannerSelected]?.status==='salvo';
+ $('scannerClear').disabled=!scannerPhotos.length;
+}
+function scannerSelect(i){
+ scannerSelected=i;const item=scannerPhotos[i];scannerObjectUrl=item?.url||null;scannerOcrResult=item?.data||null;
+ if(!item){$('scannerPreview').classList.add('hidden');$('scannerOcrDetails').classList.add('hidden');$('scannerOcrStatus').textContent='';}
+ else{$('scannerImage').src=item.url;$('scannerPreview').classList.remove('hidden');$('scannerOcrText').textContent=item.text||'Leitura pendente';$('scannerOcrDetails').classList.toggle('hidden',!item.text);$('scannerOcrStatus').textContent=item.message||'Aguardando leitura…';}
+ scannerRenderGallery();
+}
 function scannerShowPhoto(file){
- if(scannerObjectUrl){URL.revokeObjectURL(scannerObjectUrl);scannerObjectUrl=null;}
  if(!file||!file.type.startsWith('image/')){toast('Foto inválida.',true);return;}
  if(file.size>12*1024*1024){toast('Foto muito grande (máximo 12 MB).',true);return;}
- scannerObjectUrl=URL.createObjectURL(file);$('scannerImage').src=scannerObjectUrl;
- $('scannerPreview').classList.remove('hidden');$('scannerNewOrder').disabled=false;$('scannerClear').disabled=false;
- scannerStopCamera();
+ const item={file,url:URL.createObjectURL(file),status:'fila',data:null,text:'',message:'Aguardando leitura…'};
+ scannerPhotos.push(item);scannerSelect(scannerPhotos.length-1);scannerStopCamera();
+ scannerQueue=scannerQueue.then(()=>scannerReadPhoto(item)).catch(e=>{item.status='erro';item.message=String(e);scannerRenderGallery()});
+}
+function scannerRemove(i){
+ const item=scannerPhotos[i];if(!item)return;
+ scannerPhotos.splice(i,1);item.removed=true;
+ URL.revokeObjectURL(item.url);
+ scannerSelect(scannerPhotos.length?Math.min(i,scannerPhotos.length-1):-1);
 }
 function scannerClearPhoto(){
- scannerStopCamera();
- if(scannerObjectUrl){URL.revokeObjectURL(scannerObjectUrl);scannerObjectUrl=null;}
- $('scannerPhoto').value='';$('scannerImage').removeAttribute('src');
- $('scannerPreview').classList.add('hidden');$('scannerNewOrder').disabled=true;$('scannerClear').disabled=true;
+ scannerStopCamera();scannerPhotos.forEach(item=>{item.removed=true;URL.revokeObjectURL(item.url)});scannerPhotos.length=0;
+ $('scannerPhoto').value='';$('scannerImage').removeAttribute('src');scannerSelect(-1);
 }
 $('scannerOpenCamera').addEventListener('click',async()=>{
  if(!navigator.mediaDevices?.getUserMedia){
@@ -523,8 +549,75 @@ $('scannerCloseCamera').addEventListener('click',scannerStopCamera);
 $('scannerPhoto').addEventListener('change',ev=>{const file=ev.target.files?.[0];if(file)scannerShowPhoto(file);});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)scannerStopCamera();});
 $('scannerClear').addEventListener('click',scannerClearPhoto);
+// OCR local: biblioteca carregada sob demanda. Nenhum dado da foto é enviado ao Supabase.
+let scannerTesseractPromise=null;
+function scannerLoadOcr(){
+ if(window.Tesseract)return Promise.resolve();
+ if(scannerTesseractPromise)return scannerTesseractPromise;
+ scannerTesseractPromise=new Promise((resolve,reject)=>{
+  const script=document.createElement('script');script.src='https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+  script.onload=()=>window.Tesseract?resolve():reject(new Error('Biblioteca OCR indisponível'));
+  script.onerror=()=>reject(new Error('Falha ao carregar o leitor OCR. Confira a internet.'));
+  document.head.appendChild(script);
+ }).catch(err=>{scannerTesseractPromise=null;throw err});
+ return scannerTesseractPromise;
+}
+function scannerLineValue(lines,label){
+ const rx=new RegExp('(?:^|\\s)(?:'+label+')\\s*[:\\-]\\s*(.+)$','i');
+ for(let i=0;i<lines.length;i++){
+  const m=lines[i].match(rx);if(m&&m[1].trim())return m[1].trim();
+  if(new RegExp('^\\s*(?:'+label+')\\s*:?\\s*$','i').test(lines[i])&&lines[i+1])return lines[i+1].trim();
+ }
+ return '';
+}
+function scannerParse(text){
+ const lines=text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+ const pick=(rx)=>{const m=text.match(rx);return m?m[1].trim():''};
+ const platform=/\b(?:i\s*food|ifood)\b/i.test(text)?'ifood':/99\s*food/i.test(text)?'99food':'outro';
+ let number=scannerLineValue(lines,'(?:n[º°o.]?\\s*do\\s*)?pedido|order\\s*(?:number|id)|n[º°o.]');
+ if(!number)number=pick(/(?:pedido|order)\s*[#nº°.:\-]*\s*([A-Z0-9\-]{3,18})/i);
+ number=number.replace(/^(?:#|n[º°o.]?\s*)/i,'').split(/\s{2,}/)[0].slice(0,40);
+ let client=scannerLineValue(lines,'cliente|customer|nome\\s*do\\s*cliente');
+ if(!client)client=pick(/(?:cliente|customer)\s*[:\-]?\s*\n\s*([^\n]+)/i);
+ const address=scannerLineValue(lines,'endere[cç]o(?:\\s*de\\s*entrega)?|rua|avenida|av\\.|logradouro');
+ let street=address;
+ if(address&&!/^(?:rua|avenida|av\.|travessa|alameda|pra[cç]a|rodovia)/i.test(address)&&/^(?:rua|avenida|av\.|travessa|alameda|pra[cç]a|rodovia)/i.test(lines.find(l=>l.includes(address))||''))street=lines.find(l=>l.includes(address));
+ if(!street){street=lines.find(l=>/^(?:rua|r\.|avenida|av\.|travessa|alameda|pra[cç]a|rodovia)\s/i.test(l))||'';}
+ const district=scannerLineValue(lines,'bairro');const city=scannerLineValue(lines,'cidade|munic[ií]pio');
+ let fullAddress=[street,district,city].filter(Boolean).join(', ');
+ const complement=scannerLineValue(lines,'complemento|apto|apartamento');
+ const reference=scannerLineValue(lines,'refer[eê]ncia|ponto\\s*de\\s*refer[eê]ncia');
+ const locator=scannerLineValue(lines,'localizador');
+ const forecast=scannerLineValue(lines,'entrega\\s*prevista|previs[aã]o\\s*de\\s*entrega');
+ const paid=/pagamento\s+online\s+j[aá]\s+realizado|pago\s+online|pagamento\s+realizado|pago\s+via\s+(?:pix|cart[aã]o)/i.test(text);
+ const charge=/cobrar\s+(?:na\s+entrega|do\s+cliente)|pagamento\s+(?:na\s+entrega|pendente)|dinheiro\s+na\s+entrega/i.test(text);
+ const value=pick(/(?:total(?:\s+do\s+pedido)?|valor\s+a\s+cobrar)\s*[:\-]?\s*R\$\s*([\d.,]+)/i);
+ return {platform,number,client,fullAddress,complement,reference,locator,forecast,payment:paid?'pago':charge?'cobrar':'indefinido',value,text};
+}
+async function scannerReadPhoto(item){
+ if(item.removed)return;
+ item.status='lendo';item.message='Lendo etiqueta…';scannerRenderGallery();
+ try{
+  await scannerLoadOcr();if(item.removed)return;
+  const worker=await Tesseract.createWorker('por',1,{logger:m=>{if(!item.removed&&m.status==='recognizing text'){item.message='Lendo etiqueta… '+Math.round((m.progress||0)*100)+'%';if(scannerPhotos[scannerSelected]===item)$('scannerOcrStatus').textContent=item.message;}}});
+  let result;try{result=await worker.recognize(item.file);}finally{await worker.terminate();}
+  if(item.removed)return;
+  item.text=result.data.text||'';item.data=scannerParse(item.text);
+  const filled=[item.data.number,item.data.client,item.data.fullAddress].filter(Boolean).length;
+  item.status=filled===3?'ok':'erro';
+  item.message=`${filled} de 3 campos principais reconhecidos. ${filled<3?'⚠ Confira e corrija os campos ausentes.':'Confira antes de cadastrar.'}`;
+ }catch(err){if(item.removed)return;item.status='erro';item.message='Erro na leitura: '+(err.message||err)+'. Confira manualmente.';}
+ if(scannerPhotos[scannerSelected]===item)scannerSelect(scannerSelected);else scannerRenderGallery();
+}
 $('scannerNewOrder').addEventListener('click',()=>{
  if(!scannerObjectUrl||!state.empresa){toast('Fotografe uma etiqueta primeiro.',true);return;}
- $('orderForm').reset();$('orderDialog').showModal();
- toast('Confira a foto e preencha os dados da etiqueta antes de salvar.');
+ $('orderForm').reset();
+ const d=scannerPhotos[scannerSelected]?.data||{};
+ $('orderNumber').value=d.number||'';$('orderPlatform').value=d.platform||'outro';
+ $('orderClient').value=d.client||'';$('orderAddress').value=d.fullAddress||'';
+ $('orderComplement').value=d.complement||'';$('orderReference').value=d.reference||'';$('orderLocator').value=d.locator||'';
+ $('orderCoords').classList.add('hidden');scannerFromPhoto=true;
+ $('orderDialog').showModal();
+ toast('Confira cliente, endereço e número. Corrija qualquer campo antes de salvar.');
 });
+$('orderDialog').addEventListener('close',()=>{scannerFromPhoto=false;$('orderCoords').classList.remove('hidden');});
