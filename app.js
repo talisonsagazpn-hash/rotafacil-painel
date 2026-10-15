@@ -5,7 +5,8 @@ const $=id=>document.getElementById(id);const esc=v=>String(v??'').replace(/[&<>
 let state={user:null,empresa:null,lojas:[],motoboys:[],pedidos:[],rotas:[],paradas:[],localizacoes:[],page:'inicio',finance:[],selected:new Set(),map:null,markers:[],routeLines:[],focusDriver:null,autoFit:true,optimized:null,roadCache:new Map(),roadPending:new Set()};
 const statusName={pendente:'Pendente',em_rota:'Em rota',entregue:'Entregue',cancelado:'Cancelado',rascunho:'Rascunho',enviada:'Enviada',em_andamento:'Em andamento',concluida:'Concluída',cancelada:'Cancelada'};
 const badge=s=>`<span class="status ${esc(s)}">${esc(statusName[s]||s)}</span>`;
-const fmt=d=>d?new Date(d).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+const fmt=d=>d?new Date(d).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+const brDateKey=d=>{const date=new Date(d);if(!Number.isFinite(date.getTime()))return '';return new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(date)};
 function toast(t,bad=false){const el=$('toast');el.textContent=t;el.style.display='block';el.style.borderColor=bad?'#b34c52':'#2b7c4d';clearTimeout(toast.t);toast.t=setTimeout(()=>el.style.display='none',5000)}
 function errorText(e){return e?.message||String(e)}
 async function fetchAll(){if(!state.empresa)return;const eid=state.empresa.id;const queries=await Promise.all([
@@ -70,7 +71,7 @@ function driverStatus(loc){return driverLive(loc)?'Online':driverUnstable(loc)?'
 function activeDriverRoutes(m){return state.rotas.filter(r=>r.motoboy_id===m.id&&['enviada','em_andamento'].includes(r.status))}
 function bikeIcon(live){return L.divIcon({className:'bike-pin-container',html:`<div class="bike-pin ${live?'bike-pin-online':'bike-pin-offline'}" aria-label="Motoboy ${live?'online':'offline'}">🏍️</div>`,iconSize:[38,38],iconAnchor:[19,19],popupAnchor:[0,-18]})}
 function focusDriver(id){state.focusDriver=id;state.autoFit=true;page('mapa')}
-function render(){if(state.page==='financeiro')renderFinance();const today=new Date().toLocaleDateString('sv-SE');const todayOrders=state.pedidos.filter(p=>new Date(p.criado_em).toLocaleDateString('sv-SE')===today);$('statOrders').textContent=todayOrders.length;$('statRoad').textContent=state.pedidos.filter(p=>p.status==='em_rota').length;$('statDone').textContent=todayOrders.filter(p=>p.status==='entregue').length;$('statPending').textContent=state.pedidos.filter(p=>p.status==='pendente').length;$('statDrivers').textContent=state.motoboys.filter(m=>m.ativo).length;$('recentOrders').innerHTML=table(state.pedidos.slice(0,7));$('recentRoutes').innerHTML=state.rotas.slice(0,5).map(r=>`<div class="route-item"><div><b>Rota #${r.id.slice(0,6)}</b><small>${fmt(r.criada_em)} · ${state.paradas.filter(p=>p.rota_id===r.id).length} pedidos</small></div>${badge(r.status)}</div>`).join('')||'<div class="empty">Nenhuma rota cadastrada</div>';$('recentDrivers').innerHTML=state.motoboys.map(m=>`<div class="driver-item">🏍️ ${esc(m.nome)} <small>${m.ativo?'Ativo':'Inativo'}</small></div>`).join('')||'<div class="empty">Nenhum motoboy</div>';
+function render(){if(state.page==='financeiro')renderFinance();const today=brDateKey(new Date());const todayOrders=state.pedidos.filter(p=>brDateKey(p.criado_em)===today);$('statOrders').textContent=todayOrders.length;$('statRoad').textContent=todayOrders.filter(p=>p.status==='em_rota').length;$('statDone').textContent=todayOrders.filter(p=>p.status==='entregue').length;$('statPending').textContent=todayOrders.filter(p=>p.status==='pendente').length;$('statDrivers').textContent=state.motoboys.filter(m=>m.ativo).length;$('recentOrders').innerHTML=table(state.pedidos.slice(0,7));$('recentRoutes').innerHTML=state.rotas.filter(r=>brDateKey(r.criada_em)===today).slice(0,5).map(r=>`<div class="route-item"><div><b>Rota #${r.id.slice(0,6)}</b><small>${fmt(r.criada_em)} · ${state.paradas.filter(p=>p.rota_id===r.id).length} pedidos</small></div>${badge(r.status)}</div>`).join('')||'<div class="empty">Nenhuma rota cadastrada</div>';$('recentDrivers').innerHTML=state.motoboys.map(m=>`<div class="driver-item">🏍️ ${esc(m.nome)} <small>${m.ativo?'Ativo':'Inativo'}</small></div>`).join('')||'<div class="empty">Nenhum motoboy</div>';
 const term=$('orderSearch').value.toLowerCase(),filter=$('orderFilter').value;const filtered=state.pedidos.filter(p=>(!filter||p.status===filter)&&[p.cliente_nome,p.numero,p.endereco].some(v=>String(v||'').toLowerCase().includes(term)));$('ordersTable').innerHTML=table(filtered,true);$('routeStore').innerHTML=options(state.lojas);$('orderStore').innerHTML=options(state.lojas);if($('outsideStore'))$('outsideStore').innerHTML=options(state.lojas);const previousWaStore=$('waStore').value;$('waStore').innerHTML=options(state.lojas);if(previousWaStore&&state.lojas.some(s=>s.id===previousWaStore))$('waStore').value=previousWaStore;const selectedDriver=$('routeDriver').value;const eligibleDrivers=state.motoboys.filter(m=>m.ativo&&driverLive(driverLoc(m)));$('routeDriver').innerHTML='<option value="">Selecione um motoboy online (pode estar em rota)</option>'+options(eligibleDrivers);if(eligibleDrivers.some(m=>m.id===selectedDriver))$('routeDriver').value=selectedDriver;const store=$('routeStore').value||$('routeStore').dataset.selected||state.lojas[0]?.id;if(store&&state.lojas.some(x=>x.id===store))$('routeStore').value=store;
 const available=state.pedidos.filter(p=>p.status==='pendente'&&p.loja_id===$('routeStore').value);state.selected=new Set([...state.selected].filter(id=>available.some(p=>p.id===id)));$('routeCandidates').innerHTML=available.map(p=>`<label class="candidate"><input type="checkbox" data-pick="${esc(p.id)}" ${state.selected.has(p.id)?'checked':''}><div><b>#${esc(p.numero||p.id.slice(0,6))} — ${esc(p.cliente_nome)}</b><small>${esc(p.endereco)}</small></div></label>`).join('')||'<div class="empty">Não há pedidos pendentes nesta loja.</div>';$('selectedCount').textContent=`${state.selected.size} pedido(s) selecionado(s)`;$('deleteSelectedOrders').disabled=state.selected.size===0;updateOptimizationUI();$('routesList').innerHTML=state.rotas.map(r=>{const d=state.motoboys.find(m=>m.id===r.motoboy_id);return `<div class="route-item"><div><b>Rota #${r.id.slice(0,8)}</b><small>🏍️ ${esc(d?.nome||'Sem motoboy')} · ${state.paradas.filter(p=>p.rota_id===r.id).length} pedidos · ${fmt(r.criada_em)}</small></div>${badge(r.status)}<div class="route-manage"><button type="button" class="secondary" data-route-detail="${esc(r.id)}">Detalhes</button>${['enviada','em_andamento'].includes(r.status)?`<button type="button" class="secondary" data-route-release="${esc(r.id)}">Retirar rota</button><button type="button" class="secondary" data-route-cancel="${esc(r.id)}">Cancelar pendentes</button>`:''}</div></div>`}).join('')||'<div class="empty">Nenhuma rota enviada.</div>';
 $('driverActions').classList.toggle('hidden',state.papel!=='proprietario');
@@ -158,7 +159,7 @@ async function saveOutside(ev){
  $('routeStore').dataset.selected=payload.loja_id;state.selected=new Set([data.id]);page('rotas');
  toast('Corrida por fora criada e selecionada. Escolha o motoboy e envie a rota.');
 }
-async function saveOrder(ev){ev.preventDefault();const payload={empresa_id:state.empresa.id,loja_id:$('orderStore').value,numero:$('orderNumber').value.trim()||null,plataforma:$('orderPlatform').value,cliente_nome:$('orderClient').value.trim(),endereco:$('orderAddress').value.trim(),complemento:$('orderComplement').value.trim()||null,referencia:$('orderReference').value.trim()||null,localizador:$('orderLocator').value.trim()||null,latitude:$('orderLat').value?Number($('orderLat').value):null,longitude:$('orderLng').value?Number($('orderLng').value):null};const {error}=await sb.from('pedidos').insert(payload);if(error)return toast(errorText(error),true);if(scannerFromPhoto&&scannerPhotos[scannerSelected]){scannerPhotos[scannerSelected].status='salvo';scannerPhotos[scannerSelected].message='Pedido cadastrado no painel.';scannerRenderGallery();}$('orderDialog').close();$('orderForm').reset();toast('Pedido cadastrado com sucesso!');await fetchAll()}
+async function saveOrder(ev){ev.preventDefault();const payload={empresa_id:state.empresa.id,loja_id:$('orderStore').value,numero:$('orderNumber').value.trim()||null,plataforma:$('orderPlatform').value,cliente_nome:$('orderClient').value.trim(),endereco:$('orderAddress').value.trim(),complemento:$('orderComplement').value.trim()||null,referencia:$('orderReference').value.trim()||null,localizador:$('orderLocator').value.trim()||null,latitude:$('orderLat').value?Number($('orderLat').value):null,longitude:$('orderLng').value?Number($('orderLng').value):null};const {error}=await sb.from('pedidos').insert(payload);if(error)return toast(errorText(error),true);$('orderDialog').close();$('orderForm').reset();toast('Pedido cadastrado com sucesso!');await fetchAll()}
 // Mesma estrategia do Android: matriz OSRM de duracao viaria e vizinho mais proximo.
 function invalidateOptimization(){state.optimized=null;updateOptimizationUI()}
 function optimizeFeedback(message,bad=false){const el=$('optimizeFeedback');if(el){el.textContent=message;el.style.color=bad?'#ff9b9b':'#9be7bd';el.style.display='block'}if(bad)toast(message,true)}
@@ -222,7 +223,7 @@ async function deleteSelectedOrders(){
  finally{btn.textContent='🚫 Cancelar selecionados';btn.disabled=state.selected.size===0;}
 }
 
-async function sendRoute(){const driver=$('routeDriver').value,store=$('routeStore').value;const opt=state.optimized;const ids=opt?.ids||[];if(!opt||opt.driver!==driver||opt.store!==store||ids.length!==state.selected.size||ids.some(id=>!state.selected.has(id)))return toast('Otimize a rota antes de enviar. A ordem deve ser conferida.',true);if(!driver||!store||!ids.length)return toast('Selecione a loja, o motoboy e pelo menos um pedido.',true);const availableDriver=state.motoboys.find(m=>m.id===driver);if(!availableDriver||!availableDriver.ativo||!driverLive(driverLoc(availableDriver)) ) return toast('Motoboy offline ou inativo. Atualize e escolha outro.',true);const button=$('sendRoute');button.disabled=true;let created=null;try{const check=await Promise.all([sb.from('localizacoes_motoboy').select('*').eq('empresa_id',state.empresa.id).eq('motoboy_id',driver).maybeSingle()]);if(check.some(x=>x.error))throw (check.find(x=>x.error).error);if(!driverLive(check[0].data))throw new Error('Motoboy ficou offline.');const {data,error}=await sb.from('rotas').insert({empresa_id:state.empresa.id,loja_id:store,motoboy_id:driver,status:'enviada',enviada_em:new Date().toISOString()}).select('id').single();if(error)throw error;created=data.id;const stops=ids.map((id,i)=>({empresa_id:state.empresa.id,rota_id:created,pedido_id:id,ordem:i+1}));const inserted=await sb.from('rota_paradas').insert(stops);if(inserted.error)throw inserted.error;const updated=await sb.from('pedidos').update({status:'em_rota',atualizado_em:new Date().toISOString()}).in('id',ids).eq('empresa_id',state.empresa.id).eq('status','pendente').select('id');if(updated.error)throw updated.error;if(updated.data.length!==ids.length)throw new Error('Nem todos os pedidos puderam ser atualizados. Verifique a rota antes de reenviar.');state.selected.clear();invalidateOptimization();toast('Rota registrada na nuvem! O envio ao celular depende da integração Android.');await fetchAll()}catch(e){toast(`Erro ao enviar rota: ${errorText(e)}${created?' (rota criada parcialmente; confira antes de tentar novamente)':''}`,true);await fetchAll()}finally{button.disabled=false}}
+async function sendRoute(){const driver=$('routeDriver').value,store=$('routeStore').value;const opt=state.optimized;const ids=opt?.ids||[];if(!opt||opt.driver!==driver||opt.store!==store||ids.length!==state.selected.size||ids.some(id=>!state.selected.has(id)))return toast('Otimize a rota antes de enviar. A ordem deve ser conferida.',true);if(!driver||!store||!ids.length)return toast('Selecione a loja, o motoboy e pelo menos um pedido.',true);const availableDriver=state.motoboys.find(m=>m.id===driver);if(!availableDriver||!availableDriver.ativo||!driverLive(driverLoc(availableDriver)) ) return toast('Motoboy offline ou inativo. Atualize e escolha outro.',true);const button=$('sendRoute');button.disabled=true;let created=null;try{const check=await Promise.all([sb.from('localizacoes_motoboy').select('*').eq('empresa_id',state.empresa.id).eq('motoboy_id',driver).maybeSingle()]);if(check.some(x=>x.error))throw (check.find(x=>x.error).error);if(!driverLive(check[0].data))throw new Error('Motoboy ficou offline.');const {data,error}=await sb.from('rotas').insert({empresa_id:state.empresa.id,loja_id:store,motoboy_id:driver,status:'enviada',enviada_em:new Date().toISOString()}).select('id').single();if(error)throw error;created=data.id;const stops=ids.map((id,i)=>({empresa_id:state.empresa.id,rota_id:created,pedido_id:id,ordem:i+1}));const inserted=await sb.from('rota_paradas').insert(stops);if(inserted.error)throw inserted.error;const updated=await sb.from('pedidos').update({status:'em_rota',atualizado_em:new Date().toISOString()}).in('id',ids).eq('empresa_id',state.empresa.id).eq('status','pendente').select('id');if(updated.error)throw updated.error;if(updated.data.length!==ids.length)throw new Error('Nem todos os pedidos puderam ser atualizados. Verifique a rota antes de reenviar.');state.selected.clear();invalidateOptimization();toast('Rota registrada no Supabase! Confira o recebimento no aplicativo do motoboy.');await fetchAll()}catch(e){toast(`Erro ao enviar rota: ${errorText(e)}${created?' (rota criada parcialmente; confira antes de tentar novamente)':''}`,true);await fetchAll()}finally{button.disabled=false}}
 
 
 // Importação por texto: revisão obrigatória antes de salvar no Supabase.
@@ -474,253 +475,3 @@ if(recoveryLink){
     }
   });
 }else{start().catch(e=>toast(errorText(e),true));}
-
-
-// Scanner de etiquetas: captura local e cadastro conferido. OCR e upload não implementados nesta etapa.
-let scannerObjectUrl=null;
-let scannerCameraStream=null;
-let scannerOcrResult=null;let scannerOcrToken=0;let scannerFromPhoto=false;
-const scannerPhotos=[];let scannerSelected=-1;let scannerQueue=Promise.resolve();
-function scannerStopCamera(){
- if(scannerCameraStream){scannerCameraStream.getTracks().forEach(t=>t.stop());scannerCameraStream=null;}
- $('scannerCameraVideo').srcObject=null;
- $('scannerCameraBox').classList.add('hidden');
- $('scannerTakePhoto').classList.add('hidden');
- $('scannerCloseCamera').classList.add('hidden');
- $('scannerOpenCamera').classList.remove('hidden');
-}
-function scannerRenderGallery(){
- $('scannerPhotoCount').textContent=`Fotos capturadas: ${scannerPhotos.length}`;
- $('scannerGallery').replaceChildren();
- scannerPhotos.forEach((item,i)=>{
-  const wrapper=document.createElement('div');wrapper.style.cssText='flex:0 0 108px;position:relative;text-align:center';
-  const btn=document.createElement('button');btn.type='button';btn.style.cssText=`display:block;width:108px;padding:3px;border:2px solid ${i===scannerSelected?'#38c975':'#555'};border-radius:10px;background:#171b1d`;
-  const img=document.createElement('img');img.src=item.url;img.alt='Etiqueta '+(i+1);img.style.cssText='width:100px;height:90px;object-fit:cover;border-radius:7px';btn.append(img);
-  btn.addEventListener('click',()=>scannerSelect(i));wrapper.append(btn);
-  const caption=document.createElement('div');caption.style.cssText='font-size:11px;line-height:1.3';caption.textContent=`#${i+1} · ${item.status==='ok'?'✓ Lida':item.status==='erro'?'⚠ Erro':item.status==='salvo'?'✓ Salva':'⌛ Lendo'}`;wrapper.append(caption);
-  const remove=document.createElement('button');remove.type='button';remove.textContent='Excluir';remove.style.cssText='font-size:11px;padding:3px 7px';remove.addEventListener('click',()=>scannerRemove(i));wrapper.append(remove);
-  $('scannerGallery').append(wrapper);
- });
- $('scannerNewOrder').disabled=scannerSelected<0||scannerPhotos[scannerSelected]?.status==='salvo';
- $('scannerClear').disabled=!scannerPhotos.length;
-}
-function scannerSelect(i){
- scannerSelected=i;const item=scannerPhotos[i];scannerObjectUrl=item?.url||null;scannerOcrResult=item?.data||null;
- if(!item){$('scannerPreview').classList.add('hidden');$('scannerOcrDetails').classList.add('hidden');$('scannerOcrStatus').textContent='';}
- else{$('scannerImage').src=item.previewProcessed&&item.processed?item.processed:item.url;$('scannerPreview').classList.remove('hidden');$('scannerOcrText').textContent=item.text||'Leitura pendente';$('scannerOcrDetails').classList.toggle('hidden',!item.text);$('scannerOcrStatus').textContent=item.message||'Aguardando leitura…';}scannerUpdatePreview(item);scannerRenderFields(item);scannerRenderGallery();
-}
-function scannerUpdatePreview(item){if(item&&scannerPhotos[scannerSelected]===item){$('scannerImage').src=item.previewProcessed&&item.processed?item.processed:item.url;const btn=$('scannerTogglePreview');if(btn){btn.disabled=!item.processed;btn.textContent=item.previewProcessed?'Ver foto original':'Ver imagem tratada';}}}
-function scannerShowPhoto(file){
- if(!file||!file.type.startsWith('image/')){toast('Foto inválida.',true);return;}
- if(file.size>12*1024*1024){toast('Foto muito grande (máximo 12 MB).',true);return;}
- const item={file,url:URL.createObjectURL(file),status:'fila',data:null,text:'',message:'Aguardando leitura…'};
- scannerPhotos.push(item);scannerSelect(scannerPhotos.length-1);scannerStopCamera();
- scannerQueue=scannerQueue.then(()=>scannerReadPhoto(item)).catch(e=>{item.status='erro';item.message=String(e);scannerRenderGallery()});
-}
-function scannerRemove(i){
- const item=scannerPhotos[i];if(!item)return;
- scannerPhotos.splice(i,1);item.removed=true;
- URL.revokeObjectURL(item.url);
- scannerSelect(scannerPhotos.length?Math.min(i,scannerPhotos.length-1):-1);
-}
-function scannerClearPhoto(){
- scannerStopCamera();scannerPhotos.forEach(item=>{item.removed=true;URL.revokeObjectURL(item.url)});scannerPhotos.length=0;
- $('scannerPhoto').value='';$('scannerImage').removeAttribute('src');scannerSelect(-1);
-}
-$('scannerOpenCamera').addEventListener('click',async()=>{
- if(!navigator.mediaDevices?.getUserMedia){
-  // Navegadores sem câmera embutida: solicitar captura pelo aplicativo de câmera.
-  $('scannerPhoto').click();return;
- }
- try{
-  scannerCameraStream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}}});
-  $('scannerCameraVideo').srcObject=scannerCameraStream;
-  await $('scannerCameraVideo').play();
-  $('scannerCameraBox').classList.remove('hidden');$('scannerTakePhoto').classList.remove('hidden');
-  $('scannerCloseCamera').classList.remove('hidden');$('scannerOpenCamera').classList.add('hidden');
- }catch(e){
-  scannerStopCamera();
-  toast('Não foi possível abrir a câmera. Confira a permissão do navegador.',true);
- }
-});
-$('scannerTakePhoto').addEventListener('click',()=>{
- const video=$('scannerCameraVideo');
- if(!scannerCameraStream||!video.videoWidth){toast('Aguarde a câmera carregar.',true);return;}
- const canvas=document.createElement('canvas');canvas.width=video.videoWidth;canvas.height=video.videoHeight;
- canvas.getContext('2d').drawImage(video,0,0,canvas.width,canvas.height);
- canvas.toBlob(blob=>{
-  if(!blob){toast('Não foi possível capturar a foto.',true);return;}
-  scannerShowPhoto(new File([blob],'etiqueta.jpg',{type:'image/jpeg'}));
- },'image/jpeg',0.88);
-});
-$('scannerCloseCamera').addEventListener('click',scannerStopCamera);
-$('scannerPhoto').addEventListener('change',ev=>{const file=ev.target.files?.[0];if(file)scannerShowPhoto(file);});
-document.addEventListener('visibilitychange',()=>{if(document.hidden)scannerStopCamera();});
-$('scannerClear').addEventListener('click',scannerClearPhoto);
-// OCR local: biblioteca carregada sob demanda. Nenhum dado da foto é enviado ao Supabase.
-let scannerTesseractPromise=null;
-function scannerLoadOcr(){
- if(window.Tesseract)return Promise.resolve();
- if(scannerTesseractPromise)return scannerTesseractPromise;
- scannerTesseractPromise=new Promise((resolve,reject)=>{
-  const script=document.createElement('script');script.src='https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
-  script.onload=()=>window.Tesseract?resolve():reject(new Error('Biblioteca OCR indisponível'));
-  script.onerror=()=>reject(new Error('Falha ao carregar o leitor OCR. Confira a internet.'));
-  document.head.appendChild(script);
- }).catch(err=>{scannerTesseractPromise=null;throw err});
- return scannerTesseractPromise;
-}
-function scannerLineValue(lines,label){
- const rx=new RegExp('(?:^|\\s)(?:'+label+')\\s*[:\\-]\\s*(.+)$','i');
- for(let i=0;i<lines.length;i++){
-  const m=lines[i].match(rx);if(m&&m[1].trim())return m[1].trim();
-  if(new RegExp('^\\s*(?:'+label+')\\s*:?\\s*$','i').test(lines[i])&&lines[i+1])return lines[i+1].trim();
- }
- return '';
-}
-function scannerParse(text){
- const raw=String(text||'').replace(/\u00a0/g,' ').replace(/[‐‑–—]/g,'-');
- const lines=raw.split(/\r?\n/).map(v=>v.trim()).filter(Boolean);
- const find=(re)=>{const m=raw.match(re);return m?String(m[1]||'').trim():''};
- const line=(re)=>{for(const l of lines){const m=l.match(re);if(m)return String(m[1]||'').trim()}return ''};
- const clean=v=>String(v||'').replace(/^(?:nome|cliente|endere[cç]o|cidade|localizador)\s*:\s*/i,'').trim();
- const olo=/\b(?:olo|entrega\s+parceira)\b/i.test(raw);
- const platform=olo?'outro':/99\s*food|didi\s*delivery/i.test(raw)?'99food':/\bi\s*food\b/i.test(raw)?'ifood':'outro';
- const kind=olo?'Entrega da loja (Olo)':platform==='99food'?'99Food':platform==='ifood'?'iFood':'Não identificada';
- // OCR pode transformar asteriscos em barras, pontos ou espaços.
- let number=find(/(?:\*|[✱★]){2,}\s*[#＃]?\s*([0-9]{1,10})\s*(?:\*|[✱★]){2,}/i);
- if(!number)number=find(/(?:^|\n)\s*(?:[\*✱★|]{2,}\s*)?[#＃]\s*([0-9]{1,10})\b/m);
- if(!number)number=find(/(?:^|\n)[^\n]{0,15}[#＃]\s*([0-9]{1,8})\s*(?:[\*✱★|]{1,}|$)/m);
- if(!number)number=find(/\bpedido\s*[:#nº°.-]*\s*#?\s*([0-9]{1,10})\b/i);
- let client=clean(line(/^(?:nome|cliente|nome\s+do\s+cliente)\s*[:;.-]\s*(.+)$/i));
- if(!client){const ix=lines.findIndex(v=>/^(?:nome|cliente)\s*:?$/i.test(v));if(ix>=0)client=clean(lines[ix+1]);}
- let street=clean(line(/^(?:endere[cç]o|endereco)\s*[:;.-]\s*(.+)$/i));
- if(!street)street=lines.find(v=>/^(?:r\.|rua|av\.|avenida|travessa|alameda|pra[cç]a)\s/i.test(v))||'';
- const district=clean(line(/^bairro\s*[:;.-]\s*(.+)$/i));
- const city=clean(line(/^cidade\s*[:;.-]\s*(.+)$/i));
- const complement=clean(line(/^complemento\s*[:;.-]\s*(.+)$/i));
- const reference=clean(line(/^refer[eê]ncia\s*[:;.-]\s*(.+)$/i));
- let fullAddress=[street,district,city].filter(Boolean).join(', ');
- // Não incorporar rótulos subsequentes no endereço.
- fullAddress=fullAddress.replace(/\s+(?:cidade|complemento|previs[aã]o|localizador)\s*:.*/i,'').trim();
- let locator=platform==='outro'?'':find(/localizad[o0]r\s*[:;.-]?\s*([0-9][0-9\s]{5,15})/i).replace(/\s+/g,'');
- const forecast=find(/(?:previs[aã]o|entrega\s+prevista)\s*[:;.-]?\s*([0-2]?\d\s*[:h.]\s*[0-5]\d\s*[-a]\s*[0-2]?\d\s*[:h.]\s*[0-5]\d)/i).replace(/\s+/g,'');
- let created=find(/criad[o0]\s+em\s*[:;.-]?\s*([0-3]?\d\s*\/\s*[01]?\d\s*\/\s*20\d\d\s+[0-2]?\d\s*[:.]\s*[0-5]\d\s*[:.]\s*[0-5]\d)/i).replace(/\s+/g,' ').replace(/\s*[:.]\s*/g,':');
- if(!created)created=find(/criad[o0]\s+em\s*[:;.-]?\s*([0-3]?\d\s*\/\s*[01]?\d\s*\/\s*20\d\d\s+[0-2]?\d\s*[:.]\s*[0-5]\d)/i);
- // TOTAL isolado, nunca "Total dos itens", "Total de pedidos" ou entrega.
- let total='';
- for(const l of lines){const m=l.match(/^\s*T[O0]T[A4]L\s*[:;.]?\s*(?:R\s*\$\s*)?([0-9]{1,5}[.,][0-9]{2})\s*$/i);if(m){total=m[1];break;}}
- if(!total)total=find(/(?:valor\s+total(?:\s+do\s+pedido)?|total\s+do\s+pedido)\s*[:;.]?\s*R?\s*\$?\s*([0-9]{1,5}[.,][0-9]{2})/i);
- if(!total){const ix=lines.findIndex(v=>/^T[O0]T[A4]L\s*[:;.]?\s*$/i.test(v));if(ix>=0)total=(lines[ix+1]||'').match(/(?:R\s*\$\s*)?([0-9]{1,5}[.,][0-9]{2})/)?.[1]||'';}
- if(!total)total=find(/(?:^|\n)\s*T[O0]T[A4]L\s*[:;.]?\s*\n\s*(?:R\s*\$\s*)?([0-9]{1,5}[.,][0-9]{2})/im);
- const paid=/j[aá]\s+pago\s+online|pago\s+online|pagamento\s+realizado|n[aã]o\s+cobrar\s+na\s+entrega|cobrar\s+do\s+cliente\s*R?\s*\$?\s*0[,.]00/i.test(raw);
- const charge=/cobrar\s+(?:na\s+entrega|do\s+cliente)|pagamento\s+na\s+entrega|dinheiro\s+na\s+entrega/i.test(raw);
- const payment=paid?'pago':charge?'cobrar':'indefinido';
- const paymentMethod=find(/forma\s+de\s+pagamento\s*[:;.-]\s*([^\n]+)/i);
- const products=lines.filter(v=>/^\s*\d+\s*[x×]\s+\S/i.test(v)||/^\s*\d+\s+(?!pedidos?\b)\S.{8,}/i.test(v)&&/(burger|a[cç]a[ií]|tropeiro|fritas|combo)/i.test(v));
- return {platform,kind,number,client,fullAddress,complement,reference,locator,forecast,created,total,payment,paymentMethod,products,text:raw};
-}
-function scannerRenderFields(item){
- const el=$('scannerFields');if(!el)return;
- const d=item?.data;if(!d){el.textContent='Fotografe uma etiqueta para conferir os campos reconhecidos.';return;}
- const fields=[['Tipo',d.kind],['Pedido',d.number?'#'+d.number:'⚠ Não encontrado'],['Criado em',d.created||'⚠ Conferir'],['Cliente',d.client||'⚠ Não encontrado'],['Endereço',d.fullAddress||'⚠ Não encontrado'],['Complemento',d.complement],['Referência',d.reference],['Localizador',d.locator],['Entrega prevista',d.forecast||'⚠ Conferir'],['Valor total',d.total?'R$ '+d.total:'⚠ Conferir'],['Pagamento',d.payment==='pago'?'🟢 PAGO ONLINE':d.payment==='cobrar'?'🔴 COBRAR NA ENTREGA':'⚠ NÃO IDENTIFICADO'],['Forma de pagamento',d.paymentMethod],['Produtos',(d.products||[]).join(' | ')]];
- el.replaceChildren();fields.filter(([k,v])=>v||k==='Localizador'&&d.platform!=='outro').forEach(([k,v])=>{const row=document.createElement('div');row.style.cssText='padding:5px 0;border-bottom:1px solid #444;overflow-wrap:anywhere';const strong=document.createElement('strong');strong.textContent=k+': ';row.append(strong,document.createTextNode(v||'—'));el.append(row);});
- const warn=document.createElement('p');warn.style.cssText='font-size:13px;color:#fbbf24;margin-top:10px';warn.textContent='Confira especialmente o nome da rua, número, valor e número do pedido. OCR pode trocar letras parecidas. Use “Conferir e cadastrar pedido” para corrigir antes de salvar.';el.append(warn);
-}
-
-// Digitalização local: recorte do papel (quando detectável), redução de sombras e realce do texto.
-async function scannerPrepare(file, angle=0, mode='document'){
- const image=await createImageBitmap(file);
- try{
-  const sideways=angle===90||angle===270;
-  const w=sideways?image.height:image.width,h=sideways?image.width:image.height;
-  const scale=Math.min(2.6,Math.max(1,2200/Math.max(w,h)));
-  const c=document.createElement('canvas');c.width=Math.round(w*scale);c.height=Math.round(h*scale);
-  const ctx=c.getContext('2d',{willReadFrequently:true});ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);
-  ctx.translate(c.width/2,c.height/2);ctx.rotate(angle*Math.PI/180);
-  ctx.drawImage(image,-image.width*scale/2,-image.height*scale/2,image.width*scale,image.height*scale);
-  ctx.setTransform(1,0,0,1,0,0);
-  if(mode==='original')return c;
-  const W=c.width,H=c.height;
-  const original=ctx.getImageData(0,0,W,H),px=original.data;
-  // Só recorta automaticamente quando há contraste claro entre o papel e o fundo.
-  const luma=(x,y)=>{const k=(Math.min(H-1,Math.max(0,y))*W+Math.min(W-1,Math.max(0,x)))*4;return (px[k]*.299+px[k+1]*.587+px[k+2]*.114)};
-  const corners=[luma(W*.03,H*.03),luma(W*.97,H*.03),luma(W*.03,H*.97),luma(W*.97,H*.97)].sort((a,b)=>a-b);
-  const bg=(corners[1]+corners[2])/2,mid=luma(W*.5,H*.5);
-  let crop={x:0,y:0,w:W,h:H};
-  if(mid-bg>50){
-   const threshold=Math.min(205,bg+(mid-bg)*.40);let minX=W,minY=H,maxX=0,maxY=0,n=0;
-   for(let y=0;y<H;y+=Math.max(3,Math.floor(H/300))){for(let x=0;x<W;x+=Math.max(3,Math.floor(W/300))){
-    if(luma(x,y)>threshold){minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);n++;}
-   }}
-   if(n>200&&(maxX-minX)>.28*W&&(maxY-minY)>.35*H){
-    const pad=Math.round(Math.min(W,H)*.018);crop={x:Math.max(0,minX-pad),y:Math.max(0,minY-pad),w:Math.min(W,maxX+pad)-Math.max(0,minX-pad),h:Math.min(H,maxY+pad)-Math.max(0,minY-pad)};
-   }
-  }
-  const clipped=document.createElement('canvas');clipped.width=crop.w;clipped.height=crop.h;
-  const cctx=clipped.getContext('2d',{willReadFrequently:true});cctx.drawImage(c,crop.x,crop.y,crop.w,crop.h,0,0,crop.w,crop.h);
-  // Fundo desfocado representa iluminação/sombra; normalização local destaca tinta térmica.
-  const blur=document.createElement('canvas');blur.width=crop.w;blur.height=crop.h;
-  const bctx=blur.getContext('2d',{willReadFrequently:true});bctx.filter='grayscale(1) blur(26px)';bctx.drawImage(clipped,0,0);
-  const src=cctx.getImageData(0,0,crop.w,crop.h),data=src.data,base=bctx.getImageData(0,0,crop.w,crop.h).data;
-  for(let i=0;i<data.length;i+=4){
-   const lum=data[i]*.299+data[i+1]*.587+data[i+2]*.114;
-   const local=Math.max(65,base[i]*.299+base[i+1]*.587+base[i+2]*.114);
-   let v=Math.max(0,Math.min(255,((lum/local)-1)*230+238));
-   if(mode==='blackwhite')v=v<165?0:255;
-   data[i]=data[i+1]=data[i+2]=v;data[i+3]=255;
-  }
-  cctx.putImageData(src,0,0);
-  return clipped;
- }finally{image.close();}
-}
-
-function scannerQuality(d){return (d.number?5:0)+(d.client?4:0)+(d.fullAddress?5:0)+(d.total?4:0)+(d.payment!=='indefinido'?3:0)+(d.locator?2:0)+(d.created?2:0)+(d.products.length?2:0);}
-async function scannerReadPhoto(item){
- if(item.removed)return;
- item.status='lendo';item.message='Preparando leitura local gratuita…';scannerRenderGallery();
- let worker;
- try{
-  await scannerLoadOcr();if(item.removed)return;
-  worker=await Tesseract.createWorker('por+eng',1);
-  const variants=[[0,'document'],[0,'original'],[0,'blackwhite'],[90,'document'],[270,'document']];
-  let best=null;const candidates=[];
-  for(let i=0;i<variants.length;i++){
-   if(item.removed)return;
-   item.message=`Analisando foto ${i+1}/${variants.length} (sem IA paga)…`;
-   if(scannerPhotos[scannerSelected]===item)$('scannerOcrStatus').textContent=item.message;
-   const canvas=await scannerPrepare(item.file,...variants[i]);
-   if(i===0){item.processed=canvas.toDataURL('image/jpeg',0.87);if(scannerPhotos[scannerSelected]===item)scannerUpdatePreview(item);}
-   const res=await worker.recognize(canvas);
-   const txt=res.data.text||'', parsed=scannerParse(txt),score=scannerQuality(parsed);
-   candidates.push({txt,parsed,score});
-   if(!best||score>best.score)best={txt,parsed,score};
-  }
-  if(item.removed)return;
-  item.text=candidates.map((c,i)=>'=== LEITURA '+(i+1)+' ===\n'+c.txt).join('\n\n');
-  item.data={...best.parsed};
-  for(const key of ['number','created','client','fullAddress','locator','forecast','total','paymentMethod','complement','reference']){
-   if(!item.data[key]){const match=candidates.filter(c=>c.parsed[key]).sort((a,b)=>b.score-a.score)[0];if(match)item.data[key]=match.parsed[key];}
-  }
-  if(item.data.payment==='indefinido'&&candidates.some(c=>c.parsed.payment==='pago'))item.data.payment='pago';
-  item.data.products=[...new Set(candidates.flatMap(c=>c.parsed.products||[]))].slice(0,20);
-  const required=[item.data.number,item.data.client,item.data.fullAddress].filter(Boolean).length;
-  item.status=required===3?'ok':'erro';
-  item.message=`${required}/3 campos principais identificados. Confira e corrija antes de salvar.`;
- }catch(err){if(!item.removed){item.status='erro';item.message='Erro no OCR local: '+(err.message||err);}}
- finally{if(worker)try{await worker.terminate()}catch(e){}}
- if(scannerPhotos[scannerSelected]===item)scannerSelect(scannerSelected);else scannerRenderGallery();
-}
-$('scannerTogglePreview').addEventListener('click',()=>{const item=scannerPhotos[scannerSelected];if(!item||!item.processed)return;item.previewProcessed=!item.previewProcessed;scannerUpdatePreview(item);});
-$('scannerNewOrder').addEventListener('click',()=>{
- if(!scannerObjectUrl||!state.empresa){toast('Fotografe uma etiqueta primeiro.',true);return;}
- $('orderForm').reset();
- const d=scannerPhotos[scannerSelected]?.data||{};
- $('orderNumber').value=d.number||'';$('orderPlatform').value=d.platform||'outro';
- $('orderClient').value=d.client||'';$('orderAddress').value=d.fullAddress||'';
- $('orderComplement').value=d.complement||'';$('orderReference').value=d.reference||'';$('orderLocator').value=d.platform==='outro'?'':(d.locator||'');
- $('orderCoords').classList.add('hidden');scannerFromPhoto=true;
- $('orderDialog').showModal();
- toast('Confira cliente, endereço e número. Corrija qualquer campo antes de salvar.');
-});
-$('orderDialog').addEventListener('close',()=>{scannerFromPhoto=false;$('orderCoords').classList.remove('hidden');});

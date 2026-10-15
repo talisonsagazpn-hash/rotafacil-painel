@@ -1,0 +1,10 @@
+Rota Fácil Painel V0.3.29 — revisão autorizada
+
+1. Removida a seção Scanner de etiquetas do painel Pedidos e seu código JS. O Scanner Android é independente e não foi alterado.
+2. Início: Pedidos hoje, Em rota hoje, Entregues hoje e Pendentes hoje usam a mesma data de Brasília (America/Sao_Paulo) e a data de criação do pedido. Motoboys ativos permanece total geral. Rotas de hoje filtra por data de criação da rota.
+3. Mensagens antigas sobre integração Android substituídas por orientações de conferência de sincronização.
+4. Mantidos os demais recursos do painel e a importação WhatsApp.
+
+ATENÇÃO: Os indicadores contam os registros carregados na consulta (limite atual de 500 pedidos). Para volume comercial maior, considerar contagem no banco; essa mudança NÃO foi autorizada aqui.
+Nenhum SQL necessário.
+Para publicar: substitua index.html e app.js do GitHub Pages; config.js e styles.css também estão no ZIP.
