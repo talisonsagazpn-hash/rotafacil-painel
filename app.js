@@ -60,7 +60,7 @@ function showAccessError(message){
  console.warn('[Rota Fácil] Acesso ao painel:',message);
 }
 function options(rows){return rows.map(x=>`<option value="${esc(x.id)}">${esc(x.nome)}</option>`).join('')}
-function table(rows,withAction=false){if(!rows.length)return '<div class="empty">Nenhum pedido encontrado.</div>';return `<table><thead><tr><th>Pedido</th><th>Cliente</th><th>Endereço</th><th>Status</th><th>Data</th>${withAction?'<th>Ação</th>':''}</tr></thead><tbody>${rows.map(p=>`<tr><td>#${esc(p.numero||p.id.slice(0,6))}</td><td>${esc(p.cliente_nome)}</td><td>${esc(p.endereco)}</td><td>${badge(p.status)}</td><td>${fmt(p.criado_em)}</td>${withAction?`<td>${p.status==='pendente'?`<button class="secondary" data-cancel="${esc(p.id)}">Cancelar</button>`:'—'}</td>`:''}</tr>`).join('')}</tbody></table>`}
+function table(rows,withAction=false){if(!rows.length)return '<div class="empty">Nenhum pedido encontrado.</div>';return `<table><thead><tr><th>Pedido</th><th>Cliente</th><th>Endereço</th><th>Status</th><th>Data</th>${withAction?'<th>Ação</th>':''}</tr></thead><tbody>${rows.map(p=>`<tr><td>#${esc(p.numero||p.id.slice(0,6))}</td><td>${esc(p.cliente_nome)}</td><td>${esc(p.endereco)}</td><td>${badge(p.status)}</td><td>${fmt(p.criado_em)}</td>${withAction?`<td>${p.status==='pendente'?`<button class="secondary" data-cancel="${esc(p.id)}">Cancelar sem pagamento</button>`:p.status==='em_rota'?`<div class="route-manage"><button class="secondary" data-cancel-paid="${esc(p.id)}">Cancelar e pagar motoboy</button><button class="secondary" data-order-detail="${esc(p.id)}">Ver rota</button></div>`:'—'}</td>`:''}</tr>`).join('')}</tbody></table>`}
 function driverLoc(m){return state.localizacoes.find(l=>l.motoboy_id===m.id)}
 function validLoc(loc){return !!loc&&Number.isFinite(Number(loc.latitude))&&Number.isFinite(Number(loc.longitude))&&Math.abs(Number(loc.latitude))<=90&&Math.abs(Number(loc.longitude))<=180}
 function gpsAge(loc){const age=Date.now()-new Date(loc?.atualizado_em).getTime();return Number.isFinite(age)?Math.max(0,Math.floor(age/1000)):Infinity}
@@ -390,7 +390,25 @@ $('routesList').addEventListener('click',e=>{
  const id=btn.dataset.routeDetail||btn.dataset.routeRelease||btn.dataset.routeCancel;
  const action=btn.dataset.routeDetail?'detail':btn.dataset.routeRelease?'release':'cancel';manageRoute(id,action);
 });
-$('goImportOrders').onclick=()=>page('pedidos');$('ordersTable').onclick=async e=>{const id=e.target.closest('[data-cancel]')?.dataset.cancel;if(!id)return;const order=state.pedidos.find(p=>p.id===id);if(!order||!confirm('Cancelar este pedido e preservar o histórico?'))return;const {error}=await sb.rpc('rota_cancelar_pedidos_loja',{p_empresa_id:state.empresa.id,p_loja_id:order.loja_id,p_pedido_ids:[id]});if(error)toast(errorText(error),true);else{toast('Pedido cancelado e sincronizado.');await fetchAll()}};
+$('goImportOrders').onclick=()=>page('pedidos');$('ordersTable').onclick=async e=>{
+ const btn=e.target.closest('[data-cancel],[data-cancel-paid],[data-order-detail]');if(!btn)return;
+ const id=btn.dataset.cancel||btn.dataset.cancelPaid||btn.dataset.orderDetail;
+ const order=state.pedidos.find(p=>p.id===id);if(!order)return;
+ if(btn.dataset.orderDetail){const st=state.paradas.find(x=>x.pedido_id===id);if(st)manageRoute(st.rota_id,'detail');else toast('Rota não encontrada para este pedido.',true);return;}
+ if(btn.dataset.cancelPaid){
+  const st=state.paradas.find(x=>x.pedido_id===id&&state.rotas.some(r=>r.id===x.rota_id&&r.motoboy_id&&['enviada','em_andamento'].includes(r.status)));
+  if(!st){toast('Pedido sem rota ativa. Atualize o painel e confira.',true);return;}
+  const rota=state.rotas.find(r=>r.id===st.rota_id),nome=state.motoboys.find(m=>m.id===rota?.motoboy_id)?.nome||'motoboy';
+  if(!confirm(`Cancelar o pedido #${order.numero||''} de ${order.cliente_nome} e REMUNERAR ${nome} em R$ 10?\n\nO pedido ficará cancelado no histórico e o pagamento deverá aparecer no financeiro.`))return;
+  btn.disabled=true;
+  try{const {error}=await sb.rpc('rota_gerenciar_pedido',{p_rota_id:st.rota_id,p_pedido_id:id,p_acao:'cancel_paid'});if(error)throw error;toast('Pedido cancelado com remuneração do motoboy.');await fetchAll();}
+  catch(err){toast('Erro ao cancelar e pagar: '+errorText(err),true);btn.disabled=false;}
+  return;
+ }
+ if(!confirm('Cancelar este pedido sem pagamento e preservar o histórico?'))return;
+ btn.disabled=true;const {error}=await sb.rpc('rota_cancelar_pedidos_loja',{p_empresa_id:state.empresa.id,p_loja_id:order.loja_id,p_pedido_ids:[id]});
+ if(error){toast(errorText(error),true);btn.disabled=false;}else{toast('Pedido cancelado sem pagamento.');await fetchAll()}
+};
 // Financeiro administrativo: leitura por empresa, sem misturar recebimento do cliente.
 const moneyRF=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 async function loadFinance(){
