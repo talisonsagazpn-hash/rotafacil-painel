@@ -1,1 +1,9 @@
-V0.3.34: financeiro combina historico Android e financeiro_corridas_motoboy sem duplicar pedidos com mesmo ID remoto. Nao requer SQL novo. Atualize os arquivos no GitHub Pages.
+Rota Fácil Painel V0.3.35
+- Removido "Cancelar pendentes" da lista de rotas.
+- Rotas ativas: Ações, Detalhes e Retirar rota.
+- Rotas concluídas/canceladas: somente Detalhes.
+- Ações por pedido: confirmar entrega, retirar pedido, cancelar sem pagar e cancelar e pagar R$ 10.
+- Detalhes é somente leitura.
+- Mantido o financeiro integrado da V0.3.34.
+ATENÇÃO: A ação cancelar sem pagar envia p_acao='cancel' para rota_gerenciar_pedido. Validar que a RPC aceita esse valor antes do uso em produção.
+- Não altera dados do Supabase automaticamente.
