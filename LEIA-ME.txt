@@ -1,4 +1,1 @@
-V0.3.32: Recuperação de senha e troca de aparelho pela aba Motoboys.
-Antes de publicar, execute no Supabase o SQL fornecido separadamente na conversa.
-O mesmo código de primeiro acesso é usado para definir nova senha e vincular novo aparelho.
-Não há SQL dentro deste ZIP.
+V0.3.34: financeiro combina historico Android e financeiro_corridas_motoboy sem duplicar pedidos com mesmo ID remoto. Nao requer SQL novo. Atualize os arquivos no GitHub Pages.

@@ -441,6 +441,33 @@ async function loadFinance(){
      work_day:Number(d.startedAt)||Number(d.workDay)||Number(d.createdAt)||0,
      started_at:Number(d.startedAt)||0,finished_at:Number(d.finishedAt)||0};
  });
+ // Complementar com lançamentos registrados diretamente no financeiro do Supabase.
+ // A mesma entrega com ID remoto no histórico Android prevalece, sem dupla soma.
+ const {data:ledger,error:ledgerError}=await sb.from('financeiro_corridas_motoboy')
+  .select('motoboy_id,pedido_id,rota_id,resultado,valor,registrado_em')
+  .eq('empresa_id',state.empresa.id).order('registrado_em',{ascending:false}).limit(10000);
+ if(ledgerError){toast('Lançamentos financeiros: '+ledgerError.message,true)}
+ else {
+  const known=new Set(state.finance.filter(x=>x.pedido_id).map(x=>`${x.motoboy_id}|${x.pedido_id}`));
+  const ledgerSeen=new Set();
+  const ordersById=new Map(state.pedidos.map(p=>[String(p.id),p]));
+  for(const f of ledger||[]){
+   const pid=String(f.pedido_id||'');
+   const key=`${f.motoboy_id}|${pid}`;
+   if(!pid||known.has(key)||ledgerSeen.has(key))continue;
+   ledgerSeen.add(key);
+   const order=ordersById.get(pid);
+   const cancelled=String(f.resultado||'').toLowerCase().includes('cancelado');
+   const tipo=cancelled?'cancelada':'normal';
+   state.finance.push({motoboy_id:f.motoboy_id,local_id:'financeiro:'+pid,
+    pedido_id:pid,pedido_numero:String(order?.numero??pid.slice(0,8)),
+    cliente:String(order?.cliente_nome??''),
+    resultado:cancelled?'Cancelada remunerada':'Entrega remunerada',tipo,
+    retorno:0,nota_retorno:'',valor:Number(f.valor||0),
+    registrado_em:f.registrado_em||new Date(0).toISOString(),
+    work_day:Date.parse(f.registrado_em||'')||0,started_at:0,finished_at:0});
+  }
+ }
  renderFinance();
 }
 // Datas de trabalho do Android em milissegundos; fechamento em horário de Brasília.
