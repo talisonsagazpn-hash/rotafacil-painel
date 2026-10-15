@@ -1,0 +1,5 @@
+V0.3.30 — Motoboys: botões Desativar, Reativar e Excluir definitivamente (proprietário).
+1. Execute SQL_GESTAO_MOTOBOYS_V0_3_30.sql no Supabase SQL Editor.
+2. Publique os arquivos do painel.
+3. Teste primeiro com cadastro sem histórico.
+ATENÇÃO: exclusão com histórico, vínculos ou login Auth pode ser bloqueada por segurança. Desativar não necessariamente revoga tokens de login existentes; para bloquear o uso do aplicativo, o backend e o Android precisam validar motoboys.ativo em toda operação protegida. Não considerar a revogação completa implementada até verificar esse fluxo.
