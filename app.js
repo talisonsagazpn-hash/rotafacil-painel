@@ -51,6 +51,7 @@ async function start(){
  $('userName').textContent=user.email||'Administrador';
  $('login').classList.add('hidden');$('app').classList.remove('hidden');
  await fetchAll();
+ await checkUpdateAdmin();
  if(!start.interval)start.interval=setInterval(()=>{if(state.user&&state.empresa)fetchAll()},5000);
 }
 function showAccessError(message){
@@ -145,7 +146,7 @@ function renderMap(){
  setTimeout(()=>state.map?.invalidateSize(),100);
 }
 
-function page(name){if(name==='mapa'&&state.page!=='mapa')state.autoFit=true;state.page=name;document.querySelectorAll('.page').forEach(e=>e.classList.toggle('hidden',e.id!==`page-${name}`));document.querySelectorAll('.nav[data-page]').forEach(e=>e.classList.toggle('active',e.dataset.page===name));const titles={inicio:['Visão geral','Acompanhe as entregas da sua loja'],pedidos:['Pedidos','Cadastre e organize entregas'],rotas:['Rotas','Envie pedidos para o motoboy'],motoboys:['Motoboys','Equipe de entregadores'],central:['Central de Entregas','Acompanhe o progresso e a localização dos motoboys'],financeiro:['Financeiro','Extrato e remuneração por motoboy'],mapa:['Mapa em tempo real','Acompanhe a posição dos entregadores']};$('pageTitle').textContent=titles[name][0];$('pageSubtitle').textContent=titles[name][1];render();if(name==='financeiro')loadFinance()}
+function page(name){if(name==='mapa'&&state.page!=='mapa')state.autoFit=true;state.page=name;document.querySelectorAll('.page').forEach(e=>e.classList.toggle('hidden',e.id!==`page-${name}`));document.querySelectorAll('.nav[data-page]').forEach(e=>e.classList.toggle('active',e.dataset.page===name));const titles={inicio:['Visão geral','Acompanhe as entregas da sua loja'],pedidos:['Pedidos','Cadastre e organize entregas'],rotas:['Rotas','Envie pedidos para o motoboy'],motoboys:['Motoboys','Equipe de entregadores'],central:['Central de Entregas','Acompanhe o progresso e a localização dos motoboys'],financeiro:['Financeiro','Extrato e remuneração por motoboy'],mapa:['Mapa em tempo real','Acompanhe a posição dos entregadores'],atualizacoes:['Atualizações','Distribua novas versões dos aplicativos']};$('pageTitle').textContent=titles[name][0];$('pageSubtitle').textContent=titles[name][1];render();if(name==='financeiro')loadFinance();if(name==='atualizacoes')loadUpdates()}
 async function saveOutside(ev){
  ev.preventDefault();const desc=$('outsideDescription').value.trim(),address=$('outsideAddress').value.trim();
  if(!desc||!address)return toast('Informe o serviço e o endereço.',true);
@@ -559,3 +560,51 @@ if(recoveryLink){
     }
   });
 }else{start().catch(e=>toast(errorText(e),true));}
+
+
+// Atualizações: somente administradores explicitamente cadastrados no Supabase.
+let updateAdmin=false;
+async function checkUpdateAdmin(){
+ const {data,error}=await sb.rpc('rota_e_admin_atualizacoes');
+ updateAdmin=!error&&data===true;
+ $('updatesNav').classList.toggle('hidden',!updateAdmin);
+ if(!updateAdmin&&state.page==='atualizacoes')page('inicio');
+}
+async function loadUpdates(){
+ if(!updateAdmin)return;
+ const el=$('updatesList');el.textContent='Carregando versões...';
+ const {data,error}=await sb.from('app_atualizacoes').select('id,aplicativo,versao,version_code,canal,obrigatoria,notas,publicada_em,arquivo_path').order('publicada_em',{ascending:false}).limit(100);
+ if(error){el.textContent='Erro: '+error.message;return}
+ if(!data?.length){el.textContent='Nenhuma versão publicada.';return}
+ el.innerHTML=`<table><thead><tr><th>Aplicativo</th><th>Versão</th><th>Canal</th><th>Obrigatória</th><th>Publicação</th><th>APK</th></tr></thead><tbody>${data.map(v=>`<tr><td>${esc(v.aplicativo)}</td><td>${esc(v.versao)} (#${Number(v.version_code)})</td><td>${esc(v.canal)}</td><td>${v.obrigatoria?'Sim':'Não'}</td><td>${fmt(v.publicada_em)}</td><td><button class="secondary" data-update-download="${esc(v.id)}">Baixar</button></td></tr>`).join('')}</tbody></table>`;
+ el.querySelectorAll('[data-update-download]').forEach(b=>b.onclick=async()=>{
+  const v=data.find(x=>x.id===b.dataset.updateDownload);if(!v)return;
+  const {data:link,error:e}=await sb.storage.from('rota-facil-apks').createSignedUrl(v.arquivo_path,120);
+  if(e){toast('Falha ao gerar link: '+e.message,true);return}
+  window.open(link.signedUrl,'_blank','noopener,noreferrer');
+ });
+}
+$('updatesRefresh').onclick=loadUpdates;
+$('updatesForm').addEventListener('submit',async e=>{
+ e.preventDefault();if(!updateAdmin)return;
+ const file=$('updateFile').files?.[0];const feedback=$('updateFeedback');
+ if(!file||!file.name.toLowerCase().endsWith('.apk')){feedback.textContent='Selecione um arquivo .apk';return}
+ const aplicativo=$('updateApp').value, versao=$('updateVersion').value.trim(),version_code=Number($('updateCode').value),canal=$('updateChannel').value;
+ if(!/^\d+\.\d+\.\d+(?:[.-][a-zA-Z0-9.-]+)?$/.test(versao)||!Number.isSafeInteger(version_code)||version_code<1){feedback.textContent='Informe versão e versionCode válidos.';return}
+ const button=$('updatePublish');button.disabled=true;feedback.textContent='Verificando versão...';
+ let path=null;
+ try{
+  const {data:older,error:readError}=await sb.from('app_atualizacoes').select('version_code').eq('aplicativo',aplicativo).order('version_code',{ascending:false}).limit(1);
+  if(readError)throw readError;
+  if(older?.length&&version_code<=older[0].version_code)throw Error('VersionCode precisa ser maior que '+older[0].version_code);
+  path=`${aplicativo}/${crypto.randomUUID()}.apk`;
+  feedback.textContent='Enviando APK ao Supabase...';
+  const {error:uploadError}=await sb.storage.from('rota-facil-apks').upload(path,file,{contentType:'application/vnd.android.package-archive',upsert:false});
+  if(uploadError)throw uploadError;
+  const {error:insertError}=await sb.from('app_atualizacoes').insert({aplicativo,versao,version_code,canal,obrigatoria:$('updateRequired').checked,notas:$('updateNotes').value.trim(),arquivo_path:path,tamanho_bytes:file.size});
+  if(insertError)throw insertError;
+  feedback.textContent='Versão publicada com sucesso!';$('updatesForm').reset();await loadUpdates();
+ }catch(err){feedback.textContent='Não foi possível publicar: '+errorText(err);toast(errorText(err),true);
+  if(path)await sb.storage.from('rota-facil-apks').remove([path]);
+ }finally{button.disabled=false}
+});
