@@ -60,7 +60,7 @@ function showAccessError(message){
  console.warn('[Rota Fácil] Acesso ao painel:',message);
 }
 function options(rows){return rows.map(x=>`<option value="${esc(x.id)}">${esc(x.nome)}</option>`).join('')}
-function table(rows,withAction=false){if(!rows.length)return '<div class="empty">Nenhum pedido encontrado.</div>';return `<table><thead><tr><th>Pedido</th><th>Cliente</th><th>Endereço</th><th>Status</th><th>Data</th>${withAction?'<th>Ação</th>':''}</tr></thead><tbody>${rows.map(p=>`<tr><td>#${esc(p.numero||p.id.slice(0,6))}</td><td>${esc(p.cliente_nome)}</td><td>${esc(p.endereco)}</td><td>${badge(p.status)}</td><td>${fmt(p.criado_em)}</td>${withAction?`<td>${p.status==='pendente'?`<button class="secondary" data-cancel="${esc(p.id)}">Cancelar sem pagamento</button>`:p.status==='em_rota'?`<button type="button" class="secondary" data-order-detail="${esc(p.id)}">Ver rota</button>`:'—'}</td>`:''}</tr>`).join('')}</tbody></table>`}
+function table(rows,withAction=false){if(!rows.length)return '<div class="empty">Nenhum pedido encontrado.</div>';return `<table><thead><tr><th>Pedido</th><th>Cliente</th><th>Endereço</th><th>Status</th><th>Data</th>${withAction?'<th>Ação</th>':''}</tr></thead><tbody>${rows.map(p=>`<tr><td>#${esc(p.numero||p.id.slice(0,6))}</td><td>${esc(p.cliente_nome)}</td><td>${esc(p.endereco)}</td><td>${badge(p.status)}</td><td>${fmt(p.criado_em)}</td>${withAction?`<td>${p.status==='pendente'?`<button class="secondary" data-cancel="${esc(p.id)}">Cancelar sem pagamento</button>`:state.paradas.some(st=>st.pedido_id===p.id)?`<button type="button" class="secondary" data-order-detail="${esc(p.id)}">Ver rota</button>`:'—'}</td>`:''}</tr>`).join('')}</tbody></table>`}
 function driverLoc(m){return state.localizacoes.find(l=>l.motoboy_id===m.id)}
 function validLoc(loc){return !!loc&&Number.isFinite(Number(loc.latitude))&&Number.isFinite(Number(loc.longitude))&&Math.abs(Number(loc.latitude))<=90&&Math.abs(Number(loc.longitude))<=180}
 function gpsAge(loc){const age=Date.now()-new Date(loc?.atualizado_em).getTime();return Number.isFinite(age)?Math.max(0,Math.floor(age/1000)):Infinity}
@@ -408,7 +408,7 @@ $('goImportOrders').onclick=()=>page('pedidos');$('ordersTable').onclick=async e
  const btn=e.target.closest('[data-cancel],[data-order-detail]');if(!btn)return;
  const id=btn.dataset.cancel||btn.dataset.orderDetail;
  const order=state.pedidos.find(p=>p.id===id);if(!order)return;
- if(btn.dataset.orderDetail){const st=state.paradas.find(x=>x.pedido_id===id);if(st)manageRoute(st.rota_id,'detail');else toast('Rota não encontrada para este pedido.',true);return;}
+ if(btn.dataset.orderDetail){const st=[...state.paradas].reverse().find(x=>x.pedido_id===id);if(st)manageRoute(st.rota_id,'detail');else toast('Rota não encontrada para este pedido.',true);return;}
  if(!confirm('Cancelar este pedido sem pagamento e preservar o histórico?'))return;
  btn.disabled=true;const {error}=await sb.rpc('rota_cancelar_pedidos_loja',{p_empresa_id:state.empresa.id,p_loja_id:order.loja_id,p_pedido_ids:[id]});
  if(error){toast(errorText(error),true);btn.disabled=false;}else{toast('Pedido cancelado sem pagamento.');await fetchAll()}

@@ -7,3 +7,5 @@ Rota Fácil Painel V0.3.36 — interface de rotas
 - Mantido financeiro integrado da V0.3.34 e restante do painel.
 - Atenção: verificar no Supabase se rota_gerenciar_pedido aceita p_acao=cancel antes de usar essa ação em produção.
 - Não altera automaticamente o banco.
+
+V0.3.37: Ver rota agora aparece para pedidos em rota, entregues e cancelados com vínculo em rota. Rotas finalizadas permanecem somente leitura.
