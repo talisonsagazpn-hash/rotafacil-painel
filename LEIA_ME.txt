@@ -1,0 +1,8 @@
+Rota Fácil Painel V0.3.31 — Gestão de Motoboys
+
+1. Execute o SQL enviado separadamente na conversa no SQL Editor do Supabase.
+2. Publique os arquivos do painel no GitHub Pages.
+3. Teste Desativar, Reativar e Excluir com cadastro exclusivamente de teste, sem histórico.
+
+A exclusão de login Auth é feita pelo SQL de gestão, somente quando não existem outros vínculos e com verificação de proprietário. Qualquer erro deve interromper a transação.
+Desativar no painel não garante o bloqueio de sessão Android sem validação de ativo nas políticas e APIs.

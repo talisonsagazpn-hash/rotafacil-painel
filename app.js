@@ -336,11 +336,11 @@ $('driversList').addEventListener('click',async ev=>{
  if(!m||state.papel!=='proprietario')return toast('Apenas o proprietário pode gerenciar contas.',true);
  const permanent=!!btn.dataset.driverDelete;
  const action=permanent?'excluir':(m.ativo?'desativar':'reativar');
- const message=permanent?`EXCLUIR DEFINITIVAMENTE ${m.nome}?\n\nEsta ação não tem volta. Se houver histórico, financeiro ou vínculo de acesso, o Supabase bloqueará a exclusão. Para preservar esses dados, use Desativar.`:`${m.ativo?'Desativar':'Reativar'} ${m.nome}?`;
+ const message=permanent?`EXCLUIR DEFINITIVAMENTE ${m.nome}?\n\nEsta ação não tem volta. O sistema tentará apagar o cadastro e o login vinculado. Se houver rotas, financeiro, outros vínculos ou dados que precisem ser preservados, a exclusão será bloqueada. Nesse caso, use Desativar.`:`${m.ativo?'Desativar':'Reativar'} ${m.nome}?`;
  if(!confirm(message))return;
  if(permanent&&prompt(`Para confirmar, digite EXCLUIR:`)!=='EXCLUIR')return;
  btn.disabled=true;
- try{const {error}=await sb.rpc('rota_gerenciar_conta_motoboy',{p_empresa:state.empresa.id,p_motoboy:id,p_acao:action});if(error)throw error;toast(action==='excluir'?'Cadastro excluído.':action==='desativar'?'Motoboy desativado.':'Motoboy reativado.');await fetchAll()}
+ try{const {error}=await sb.rpc('rota_gerenciar_conta_motoboy',{p_empresa:state.empresa.id,p_motoboy:id,p_acao:action});if(error)throw error;toast(action==='excluir'?'Cadastro e login excluídos, quando vinculados.':action==='desativar'?'Motoboy desativado.':'Motoboy reativado.');await fetchAll()}
  catch(e){toast('Operação não concluída: '+errorText(e),true)}finally{btn.disabled=false}
 });
 $('copyDriverCode').onclick=async()=>{try{await navigator.clipboard.writeText($('driverCode').textContent);toast('Código copiado.')}catch(e){toast('Selecione e copie o código manualmente.',true)}};
