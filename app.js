@@ -2,6 +2,7 @@ import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
 import {SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY} from './config.js';
 const sb=createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,{auth:{persistSession:true,autoRefreshToken:true}});
 const $=id=>document.getElementById(id);const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let accessRequests=[];
 let state={user:null,empresa:null,lojas:[],motoboys:[],pedidos:[],rotas:[],paradas:[],localizacoes:[],page:'inicio',finance:[],selected:new Set(),map:null,markers:[],routeLines:[],focusDriver:null,autoFit:true,optimized:null,roadCache:new Map(),roadPending:new Set()};
 const statusName={pendente:'Pendente',em_rota:'Em rota',entregue:'Entregue',cancelado:'Cancelado',rascunho:'Rascunho',enviada:'Enviada',em_andamento:'Em andamento',concluida:'Concluída',cancelada:'Cancelada'};
 const badge=s=>`<span class="status ${esc(s)}">${esc(statusName[s]||s)}</span>`;
@@ -11,7 +12,7 @@ function toast(t,bad=false){const el=$('toast');el.textContent=t;el.style.displa
 function errorText(e){return e?.message||String(e)}
 async function fetchAll(){if(!state.empresa)return;const eid=state.empresa.id;const queries=await Promise.all([
  sb.from('lojas').select('*').eq('empresa_id',eid).order('criada_em'),sb.from('motoboys').select('*').eq('empresa_id',eid).order('criado_em'),sb.from('pedidos').select('*').eq('empresa_id',eid).order('criado_em',{ascending:false}).limit(500),sb.from('rotas').select('*').eq('empresa_id',eid).order('criada_em',{ascending:false}).limit(150),sb.from('rota_paradas').select('*').eq('empresa_id',eid).limit(1000),sb.from('localizacoes_motoboy').select('*').eq('empresa_id',eid)]);
- const names=['lojas','motoboys','pedidos','rotas','paradas','localizacoes'];let err=[];queries.forEach((r,i)=>{if(r.error)err.push(`${names[i]}: ${r.error.message}`);else state[names[i]]=r.data||[]});$('connection').textContent=err.length?'● Erro de conexão':'● Conectado';if(err.length)toast(err.join(' | '),true);render();if(state.page==='financeiro')loadFinance()}
+ const names=['lojas','motoboys','pedidos','rotas','paradas','localizacoes'];let err=[];queries.forEach((r,i)=>{if(r.error)err.push(`${names[i]}: ${r.error.message}`);else state[names[i]]=r.data||[]});$('connection').textContent=err.length?'● Erro de conexão':'● Conectado';if(err.length)toast(err.join(' | '),true);render();if(state.page==='financeiro')loadFinance();if(state.page==='motoboys')loadAccessRequests()}
 async function start(){
  if(recoveryMode)return;
  const {data:authData,error:authError}=await sb.auth.getUser();
@@ -76,7 +77,7 @@ function render(){if(state.page==='financeiro')renderFinance();const today=brDat
 const term=$('orderSearch').value.toLowerCase(),filter=$('orderFilter').value;const filtered=state.pedidos.filter(p=>(!filter||p.status===filter)&&[p.cliente_nome,p.numero,p.endereco].some(v=>String(v||'').toLowerCase().includes(term)));$('ordersTable').innerHTML=table(filtered,true);$('routeStore').innerHTML=options(state.lojas);$('orderStore').innerHTML=options(state.lojas);if($('outsideStore'))$('outsideStore').innerHTML=options(state.lojas);const previousWaStore=$('waStore').value;$('waStore').innerHTML=options(state.lojas);if(previousWaStore&&state.lojas.some(s=>s.id===previousWaStore))$('waStore').value=previousWaStore;const selectedDriver=$('routeDriver').value;const eligibleDrivers=state.motoboys.filter(m=>m.ativo&&driverLive(driverLoc(m)));$('routeDriver').innerHTML='<option value="">Selecione um motoboy online (pode estar em rota)</option>'+options(eligibleDrivers);if(eligibleDrivers.some(m=>m.id===selectedDriver))$('routeDriver').value=selectedDriver;const store=$('routeStore').value||$('routeStore').dataset.selected||state.lojas[0]?.id;if(store&&state.lojas.some(x=>x.id===store))$('routeStore').value=store;
 const available=state.pedidos.filter(p=>p.status==='pendente'&&p.loja_id===$('routeStore').value);state.selected=new Set([...state.selected].filter(id=>available.some(p=>p.id===id)));$('routeCandidates').innerHTML=available.map(p=>`<label class="candidate"><input type="checkbox" data-pick="${esc(p.id)}" ${state.selected.has(p.id)?'checked':''}><div><b>#${esc(p.numero||p.id.slice(0,6))} — ${esc(p.cliente_nome)}</b><small>${esc(p.endereco)}</small></div></label>`).join('')||'<div class="empty">Não há pedidos pendentes nesta loja.</div>';$('selectedCount').textContent=`${state.selected.size} pedido(s) selecionado(s)`;$('deleteSelectedOrders').disabled=state.selected.size===0;updateOptimizationUI();$('routesList').innerHTML=state.rotas.map(r=>{const d=state.motoboys.find(m=>m.id===r.motoboy_id);return `<div class="route-item"><div><b>Rota #${r.id.slice(0,8)}</b><small>🏍️ ${esc(d?.nome||'Sem motoboy')} · ${state.paradas.filter(p=>p.rota_id===r.id).length} pedidos · ${fmt(r.criada_em)}</small></div>${badge(r.status)}<div class="route-manage"><button type="button" class="secondary" data-route-detail="${esc(r.id)}">${['enviada','em_andamento'].includes(r.status)?'Ver rota':'Detalhes'}</button></div></div>`}).join('')||'<div class="empty">Nenhuma rota enviada.</div>';
 $('driverActions').classList.toggle('hidden',state.papel!=='proprietario');
-$('driversList').innerHTML=state.motoboys.map(m=>{const loc=driverLoc(m),live=driverLive(loc),routes=activeDriverRoutes(m);return `<div class="panel driver-card"><div class="driver-card-head"><span class="driver-moto" aria-hidden="true">🏍️</span><div><h2>${esc(m.nome)}</h2><span class="driver-presence ${live?'is-online':'is-offline'}"><span class="presence-dot"></span>${driverStatus(loc)}</span></div></div><p class="muted">${validLoc(loc)?`Último GPS: há ${gpsAgeLabel(loc)} · ${fmt(loc.atualizado_em)}`:'Ainda não enviou localização'}</p><p>${routes.length} rota(s) aberta(s)</p><div class="driver-buttons"><button type="button" class="primary" data-driver-focus="${esc(m.id)}" ${validLoc(loc)?'':'disabled'}>📍 Ver no mapa</button>${state.papel==='proprietario'?`<button type="button" class="secondary" data-driver-code="${esc(m.id)}">Gerar novo código</button><button type="button" class="secondary" data-driver-recover="${esc(m.id)}">Redefinir senha</button><button type="button" class="secondary" data-driver-release="${esc(m.id)}">Liberar novo aparelho</button><button type="button" class="secondary" data-driver-toggle="${esc(m.id)}">${m.ativo?'Desativar':'Reativar'}</button><button type="button" class="secondary" data-driver-delete="${esc(m.id)}">Excluir definitivamente</button>`:''}</div></div>`}).join('')||'<div class="empty">Nenhum motoboy cadastrado.</div>' ;renderCentral();renderMap()}
+$('driversList').innerHTML=state.motoboys.map(m=>{const loc=driverLoc(m),live=driverLive(loc),routes=activeDriverRoutes(m);return `<div class="panel driver-card"><div class="driver-card-head"><span class="driver-moto" aria-hidden="true">🏍️</span><div><h2>${esc(m.nome)}</h2><span class="driver-presence ${live?'is-online':'is-offline'}"><span class="presence-dot"></span>${driverStatus(loc)}</span></div></div><p class="muted">${validLoc(loc)?`Último GPS: há ${gpsAgeLabel(loc)} · ${fmt(loc.atualizado_em)}`:'Ainda não enviou localização'}</p><p>${routes.length} rota(s) aberta(s) · Usuário: <strong>${esc(m.nome_usuario||'Não definido')}</strong></p><div class="driver-buttons"><button type="button" class="primary" data-driver-focus="${esc(m.id)}" ${validLoc(loc)?'':'disabled'}>📍 Ver no mapa</button>${['proprietario','gerente'].includes(state.papel)?`<button type="button" class="secondary" data-driver-reset-authorize="${esc(m.id)}">Definir senha do novo login</button>`:''}${state.papel==='proprietario'?`<button type="button" class="secondary" data-driver-code="${esc(m.id)}">Gerar novo código</button><button type="button" class="secondary" data-driver-recover="${esc(m.id)}">Recuperação antiga (revoga aparelho)</button><button type="button" class="secondary" data-driver-release="${esc(m.id)}">Liberar novo aparelho</button><button type="button" class="secondary" data-driver-toggle="${esc(m.id)}">${m.ativo?'Desativar':'Reativar'}</button><button type="button" class="secondary" data-driver-delete="${esc(m.id)}">Excluir definitivamente</button>`:''}</div></div>`}).join('')||'<div class="empty">Nenhum motoboy cadastrado.</div>' ;renderCentral();renderMap()}
 function renderCentral(){
  const host=$('centralRoutes');if(!host)return;
  const active=state.rotas.filter(r=>['enviada','em_andamento'].includes(r.status));
@@ -146,7 +147,7 @@ function renderMap(){
  setTimeout(()=>state.map?.invalidateSize(),100);
 }
 
-function page(name){if(name==='mapa'&&state.page!=='mapa')state.autoFit=true;state.page=name;document.querySelectorAll('.page').forEach(e=>e.classList.toggle('hidden',e.id!==`page-${name}`));document.querySelectorAll('.nav[data-page]').forEach(e=>e.classList.toggle('active',e.dataset.page===name));const titles={inicio:['Visão geral','Acompanhe as entregas da sua loja'],pedidos:['Pedidos','Cadastre e organize entregas'],rotas:['Rotas','Envie pedidos para o motoboy'],motoboys:['Motoboys','Equipe de entregadores'],central:['Central de Entregas','Acompanhe o progresso e a localização dos motoboys'],financeiro:['Financeiro','Extrato e remuneração por motoboy'],mapa:['Mapa em tempo real','Acompanhe a posição dos entregadores'],atualizacoes:['Atualizações','Distribua novas versões dos aplicativos']};$('pageTitle').textContent=titles[name][0];$('pageSubtitle').textContent=titles[name][1];render();if(name==='financeiro')loadFinance();if(name==='atualizacoes')loadUpdates()}
+function page(name){if(name==='mapa'&&state.page!=='mapa')state.autoFit=true;state.page=name;document.querySelectorAll('.page').forEach(e=>e.classList.toggle('hidden',e.id!==`page-${name}`));document.querySelectorAll('.nav[data-page]').forEach(e=>e.classList.toggle('active',e.dataset.page===name));const titles={inicio:['Visão geral','Acompanhe as entregas da sua loja'],pedidos:['Pedidos','Cadastre e organize entregas'],rotas:['Rotas','Envie pedidos para o motoboy'],motoboys:['Motoboys','Equipe de entregadores'],central:['Central de Entregas','Acompanhe o progresso e a localização dos motoboys'],financeiro:['Financeiro','Extrato e remuneração por motoboy'],mapa:['Mapa em tempo real','Acompanhe a posição dos entregadores'],atualizacoes:['Atualizações','Distribua novas versões dos aplicativos']};$('pageTitle').textContent=titles[name][0];$('pageSubtitle').textContent=titles[name][1];render();if(name==='financeiro')loadFinance();if(name==='atualizacoes')loadUpdates();if(name==='motoboys')loadAccessRequests()}
 async function saveOutside(ev){
  ev.preventDefault();const desc=$('outsideDescription').value.trim(),address=$('outsideAddress').value.trim();
  if(!desc||!address)return toast('Informe o serviço e o endereço.',true);
@@ -349,6 +350,53 @@ $('driversList').addEventListener('click',async ev=>{
   toast('Acesso anterior revogado. Entregue o novo código ao motoboy com segurança.');
  }catch(e){toast('Recuperação não concluída: '+errorText(e),true)}finally{btn.disabled=false}
 });
+
+// Administração de acessos: somente RPCs com validação de gestor no servidor.
+async function loadAccessRequests(){
+ const host=$('accessRequests');if(!host||!state.empresa)return;
+ if(!['proprietario','gerente'].includes(state.papel)){host.textContent='Apenas proprietário ou gerente pode analisar solicitações.';return}
+ const {data,error}=await sb.rpc('rota_listar_solicitacoes_acesso',{p_empresa:state.empresa.id});
+ if(error){host.textContent='Não foi possível consultar solicitações: '+errorText(error);return}
+ accessRequests=data||[];
+ host.innerHTML=accessRequests.length?accessRequests.map(r=>`<div class="panel"><strong>${esc(r.nome)}</strong> · @${esc(r.nome_usuario)}<p class="muted">Solicitado em ${fmt(r.solicitado_em)}</p><button type="button" class="primary" data-access-approve="${esc(r.solicitacao_id)}">Aprovar solicitação</button> <button type="button" class="secondary" data-access-reject="${esc(r.solicitacao_id)}">Rejeitar</button></div>`).join(''):'<p class="muted">Nenhuma solicitação pendente.</p>';
+}
+$('accessRefresh').addEventListener('click',loadAccessRequests);
+$('accessRequests').addEventListener('click',async e=>{
+ const btn=e.target.closest('[data-access-approve],[data-access-reject]');if(!btn)return;
+ const approve=!!btn.dataset.accessApprove,id=btn.dataset.accessApprove||btn.dataset.accessReject;
+ const r=accessRequests.find(x=>x.solicitacao_id===id);if(!r)return;
+ if(!confirm(`${approve?'Aprovar':'Rejeitar'} a solicitação de ${r.nome}?\n\nA aprovação registra a decisão no banco. O Android de teste deverá consultar e consumir a aprovação antes do prazo de 15 minutos.`))return;
+ btn.disabled=true;
+ try{const {data,error}=await sb.rpc('rota_decidir_solicitacao_acesso',{p_solicitacao:id,p_aprovar:approve});if(error)throw error;if(!data?.ok)throw Error('Servidor não confirmou a decisão.');toast(approve?'Solicitação aprovada. Aguardando ativação pelo aparelho de teste.':'Solicitação rejeitada.');await loadAccessRequests()}
+ catch(err){toast('Não foi possível analisar: '+errorText(err),true)}finally{btn.disabled=false}
+});
+// Redefinicao gerenciada: autorizacao e conclusao na mesma operacao do painel.
+// Nunca registra a senha em logs, URLs, HTML ou armazenamento local.
+$('driversList').addEventListener('click',async e=>{
+ const btn=e.target.closest('[data-driver-reset-authorize]');if(!btn)return;
+ const m=state.motoboys.find(x=>x.id===btn.dataset.driverResetAuthorize);if(!m)return;
+ if(!['proprietario','gerente'].includes(state.papel))return toast('Apenas proprietário ou gerente pode definir a senha.',true);
+ if(!confirm(`Definir NOVA senha de acesso de ${m.nome} (@${m.nome_usuario||'sem usuário'})?\n\nA senha antiga do aplicativo continuará preservada. Informe a senha pessoalmente ao funcionário por um canal seguro.`))return;
+ let senha=prompt(`Nova senha para ${m.nome} (8 a 72 caracteres):`);
+ if(senha===null)return;
+ try{
+  if(senha.length<8||senha.length>72)throw Error('A senha precisa ter entre 8 e 72 caracteres.');
+  const confirmacao=prompt('Repita exatamente a nova senha:');
+  if(confirmacao===null)return;
+  if(senha!==confirmacao)throw Error('As senhas não conferem. Nenhuma alteração realizada.');
+  btn.disabled=true;
+  const autorizacao=await sb.rpc('rota_autorizar_redefinicao_senha',{p_empresa:state.empresa.id,p_motoboy:m.id});
+  if(autorizacao.error)throw autorizacao.error;
+  const solicitacao=autorizacao.data?.solicitacao_id;
+  if(!autorizacao.data?.ok||!solicitacao)throw Error('Não foi possível autorizar a redefinição.');
+  const conclusao=await sb.rpc('rota_concluir_redefinicao_senha',{p_solicitacao:solicitacao,p_nova_senha:senha});
+  if(conclusao.error)throw conclusao.error;
+  if(!conclusao.data?.ok)throw Error('O servidor não confirmou a nova senha.');
+  toast(`Senha nova de ${m.nome} cadastrada. O acesso antigo foi preservado.`);
+ }catch(err){toast('Não foi possível definir a senha: '+errorText(err),true)}
+ finally{senha='';btn.disabled=false}
+});
+
 // Gestão administrativa: as ações são validadas novamente no banco via RPC.
 $('driversList').addEventListener('click',async ev=>{
  const btn=ev.target.closest('[data-driver-toggle],[data-driver-delete]');if(!btn)return;
@@ -426,7 +474,11 @@ async function loadFinance(){
  // novamente os mesmos pedidos a partir de financeiro_corridas_motoboy.
  // Consolidar versoes do mesmo pedido remoto, mantendo a mais recente finalizada.
  const latest=new Map();
- for(const x of (data||[]).filter(r=>!r.excluido_em)){
+ const {data:removed,error:removedError}=await sb.from('rota_corridas_removidas').select('motoboy_id,registro_id,pedido_id').eq('empresa_id',state.empresa.id);
+ if(removedError){toast('Não foi possível verificar corridas removidas: '+removedError.message,true);return}
+ const excluded=new Set((removed||[]).map(r=>`${r.motoboy_id}|${r.registro_id}`));
+ const excludedPedidos=new Set((removed||[]).filter(r=>r.pedido_id).map(r=>`${r.motoboy_id}|${r.pedido_id}`));
+ for(const x of (data||[]).filter(r=>!r.excluido_em && !excluded.has(`${r.motoboy_id}|historico:${r.local_id}`) && !excludedPedidos.has(`${r.motoboy_id}|${r.dados?.remotePedidoId||''}`))){
    const d=x.dados||{};
    const key=d.remotePedidoId?`${x.motoboy_id}|remote|${d.remotePedidoId}`:`${x.motoboy_id}|local|${x.local_id}`;
    const previous=latest.get(key);
@@ -459,7 +511,7 @@ async function loadFinance(){
   for(const f of ledger||[]){
    const pid=String(f.pedido_id||'');
    const key=`${f.motoboy_id}|${pid}`;
-   if(!pid||known.has(key)||ledgerSeen.has(key))continue;
+   if(!pid||known.has(key)||ledgerSeen.has(key)||excluded.has(`${f.motoboy_id}|financeiro:${pid}`)||excludedPedidos.has(key))continue;
    ledgerSeen.add(key);
    const order=ordersById.get(pid);
    const cancelled=String(f.resultado||'').toLowerCase().includes('cancelado');
@@ -507,8 +559,21 @@ function renderFinance(){
  const duration=x=>x.started_at&&x.finished_at&&x.finished_at>=x.started_at?Math.floor((x.finished_at-x.started_at)/60000)+' min':'—';
  const daily=new Map();for(const x of rows){const day=rfDay(x.work_day||Date.parse(x.registrado_em));const v=daily.get(day)||{count:0,total:0,normal:0,retorno:0,cancelada:0,fora:0};v.count++;v.total+=x.valor;v[x.tipo]++;daily.set(day,v)}
  $('financeDaily').innerHTML='<table><thead><tr><th>Dia de trabalho</th><th>Corridas</th><th>Normais</th><th>Retornos</th><th>Canceladas pagas</th><th>Por fora</th><th>Total</th></tr></thead><tbody>'+[...daily].sort((a,b)=>b[0].localeCompare(a[0])).map(([day,v])=>`<tr><td>${rfBR(day)}</td><td>${v.count}</td><td>${v.normal}</td><td>${v.retorno}</td><td>${v.cancelada}</td><td>${v.fora}</td><td>${moneyRF(v.total)}</td></tr>`).join('')+'</tbody></table>';
- $('financeRows').innerHTML='<table><thead><tr><th>Dia contabilizado</th><th>Motoboy</th><th>Pedido / Cliente</th><th>Início</th><th>Finalização</th><th>Duração</th><th>Resultado</th><th>Taxa</th></tr></thead><tbody>'+rows.sort((a,b)=>b.work_day-a.work_day).map(x=>`<tr class="rf-fin-${x.tipo}"><td>${rfBR(rfDay(x.work_day||Date.parse(x.registrado_em)))}</td><td>${esc(name(x.motoboy_id))}</td><td>#${esc(x.pedido_numero)} — ${esc(x.cliente)}</td><td>${dateTime(x.started_at)}</td><td>${dateTime(x.finished_at)}</td><td>${duration(x)}</td><td>${esc(x.resultado)}${x.retorno>0?' (+'+moneyRF(x.retorno)+')':''}</td><td>${moneyRF(x.valor)}</td></tr>`).join('')+'</tbody></table>';
+ $('financeRows').innerHTML='<table><thead><tr><th>Dia contabilizado</th><th>Motoboy</th><th>Pedido / Cliente</th><th>Início</th><th>Finalização</th><th>Duração</th><th>Resultado</th><th>Taxa</th><th>Ação</th></tr></thead><tbody>'+rows.sort((a,b)=>b.work_day-a.work_day).map(x=>`<tr class="rf-fin-${x.tipo}"><td>${rfBR(rfDay(x.work_day||Date.parse(x.registrado_em)))}</td><td>${esc(name(x.motoboy_id))}</td><td>#${esc(x.pedido_numero)} — ${esc(x.cliente)}</td><td>${dateTime(x.started_at)}</td><td>${dateTime(x.finished_at)}</td><td>${duration(x)}</td><td>${esc(x.resultado)}${x.retorno>0?' (+'+moneyRF(x.retorno)+')':''}</td><td>${moneyRF(x.valor)}</td><td>${state.papel==='proprietario'?`<button type="button" class="secondary" data-remove-fin="${esc(x.local_id.startsWith('financeiro:')?'financeiro':'historico')}" data-remove-id="${esc(x.local_id)}" data-remove-driver="${esc(x.motoboy_id)}" data-remove-order="${esc(x.pedido_id||'')}">Remover corrida</button>`:'—'}</td></tr>`).join('')+'</tbody></table';
 }
+$('financeRows').addEventListener('click',async e=>{
+ const b=e.target.closest('[data-remove-fin]');if(!b)return;
+ if(state.papel!=='proprietario')return toast('Somente o proprietário pode remover corridas.',true);
+ const row=state.finance.find(x=>x.local_id===b.dataset.removeId&&x.motoboy_id===b.dataset.removeDriver);
+ if(!row)return toast('Corrida não encontrada. Atualize o financeiro.',true);
+ const driver=state.motoboys.find(x=>x.id===row.motoboy_id)?.nome||'motoboy';
+ if(!confirm(`Remover a corrida #${row.pedido_numero} de ${driver}, no valor de ${moneyRF(row.valor)}?\n\nEla deixará de contar no financeiro, mas ficará preservada para auditoria.`))return;
+ const motivo=prompt('Informe o motivo da remoção (obrigatório):');if(!motivo?.trim())return;
+ b.disabled=true;
+ const {error}=await sb.rpc('rota_remover_corrida_financeira',{p_empresa:state.empresa.id,p_motoboy:row.motoboy_id,p_registro:row.local_id,p_pedido:row.pedido_id||null,p_motivo:motivo.trim()});
+ if(error){b.disabled=false;return toast('Não foi possível remover: '+error.message,true)}
+ toast('Corrida removida do financeiro.');await loadFinance();
+});
 $('financeRefresh').onclick=loadFinance;
 for(const id of ['financeDriver','financeFrom','financeTo','financeType','financeCycle'])$(id).addEventListener('change',renderFinance);
 $('financeCsv').onclick=()=>{
