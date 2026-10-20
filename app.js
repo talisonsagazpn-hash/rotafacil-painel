@@ -3,6 +3,7 @@ import {SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY} from './config.js';
 const sb=createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,{auth:{persistSession:true,autoRefreshToken:true}});
 const $=id=>document.getElementById(id);const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let accessRequests=[];
+let removedPedidoIds=new Set();
 let state={user:null,empresa:null,lojas:[],motoboys:[],pedidos:[],rotas:[],paradas:[],localizacoes:[],page:'inicio',finance:[],selected:new Set(),map:null,markers:[],routeLines:[],focusDriver:null,autoFit:true,optimized:null,roadCache:new Map(),roadPending:new Set()};
 const statusName={pendente:'Pendente',em_rota:'Em rota',entregue:'Entregue',cancelado:'Cancelado',rascunho:'Rascunho',enviada:'Enviada',em_andamento:'Em andamento',concluida:'Concluída',cancelada:'Cancelada'};
 const badge=s=>`<span class="status ${esc(s)}">${esc(statusName[s]||s)}</span>`;
@@ -11,8 +12,8 @@ const brDateKey=d=>{const date=new Date(d);if(!Number.isFinite(date.getTime()))r
 function toast(t,bad=false){const el=$('toast');el.textContent=t;el.style.display='block';el.style.borderColor=bad?'#b34c52':'#2b7c4d';clearTimeout(toast.t);toast.t=setTimeout(()=>el.style.display='none',5000)}
 function errorText(e){return e?.message||String(e)}
 async function fetchAll(){if(!state.empresa)return;const eid=state.empresa.id;const queries=await Promise.all([
- sb.from('lojas').select('*').eq('empresa_id',eid).order('criada_em'),sb.from('motoboys').select('*').eq('empresa_id',eid).order('criado_em'),sb.from('pedidos').select('*').eq('empresa_id',eid).order('criado_em',{ascending:false}).limit(500),sb.from('rotas').select('*').eq('empresa_id',eid).order('criada_em',{ascending:false}).limit(150),sb.from('rota_paradas').select('*').eq('empresa_id',eid).limit(1000),sb.from('localizacoes_motoboy').select('*').eq('empresa_id',eid)]);
- const names=['lojas','motoboys','pedidos','rotas','paradas','localizacoes'];let err=[];queries.forEach((r,i)=>{if(r.error)err.push(`${names[i]}: ${r.error.message}`);else state[names[i]]=r.data||[]});$('connection').textContent=err.length?'● Erro de conexão':'● Conectado';if(err.length)toast(err.join(' | '),true);render();if(state.page==='financeiro')loadFinance();if(state.page==='motoboys')loadAccessRequests()}
+ sb.from('lojas').select('*').eq('empresa_id',eid).order('criada_em'),sb.from('motoboys').select('*').eq('empresa_id',eid).order('criado_em'),sb.from('pedidos').select('*').eq('empresa_id',eid).order('criado_em',{ascending:false}).limit(500),sb.from('rotas').select('*').eq('empresa_id',eid).order('criada_em',{ascending:false}).limit(150),sb.from('rota_paradas').select('*').eq('empresa_id',eid).limit(1000),sb.from('localizacoes_motoboy').select('*').eq('empresa_id',eid),sb.from('rota_corridas_removidas').select('pedido_id').eq('empresa_id',eid)]);
+ const names=['lojas','motoboys','pedidos','rotas','paradas','localizacoes','removidos'];let err=[];queries.forEach((r,i)=>{if(r.error)err.push(`${names[i]}: ${r.error.message}`);else if(i===6)removedPedidoIds=new Set((r.data||[]).map(x=>x.pedido_id).filter(Boolean));else state[names[i]]=r.data||[]});if(!queries[6].error){state.pedidos=state.pedidos.filter(p=>!removedPedidoIds.has(p.id));state.paradas=state.paradas.filter(p=>!removedPedidoIds.has(p.pedido_id));}$('connection').textContent=err.length?'● Erro de conexão':'● Conectado';if(err.length)toast(err.join(' | '),true);render();if(state.page==='financeiro')loadFinance();if(state.page==='motoboys')loadAccessRequests()}
 async function start(){
  if(recoveryMode)return;
  const {data:authData,error:authError}=await sb.auth.getUser();
