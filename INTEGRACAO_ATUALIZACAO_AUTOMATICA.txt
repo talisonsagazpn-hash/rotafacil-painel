@@ -1,0 +1,19 @@
+Painel Rota Fácil — atualização automática
+
+O painel já publica versões em app_atualizacoes e armazena APKs no bucket privado rota-facil-apks.
+A publicação é separada por aplicativo (master/funcionario) e canal (teste/producao).
+Os Androids atualizados verificam automaticamente o canal producao ao abrir/retornar ao app.
+
+PASSOS DE IMPLANTAÇÃO
+1. Se ainda não estiver instalado, execute Notas/SQL_ATUALIZACOES.sql, adaptando o e-mail do administrador.
+2. Implante supabase/functions/rota-facil-atualizacao/index.ts como Edge Function rota-facil-atualizacao, com verify_jwt desativado, e configure as variáveis SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY como segredos do Supabase. A função valida o dispositivo no servidor antes de emitir link temporário.
+3. Publique este painel web.
+4. Compile e instale os Androids atualizados com a MESMA assinatura dos APKs existentes.
+5. No painel, selecione o aplicativo correto, canal PRODUÇÃO, versionCode maior que o instalado (29643), APK assinado e publique.
+6. Ao abrir/retornar ao app, a atualização aparecerá sem o usuário acessar o menu.
+
+LIMITES
+- Android requer confirmação de instalação para APKs fora da Play Store.
+- Marcação de obrigatória é gravada no painel e retornada pelo endpoint, mas esta versão não bloqueia a operação durante uma entrega.
+- Esta entrega não compila nem valida os APKs em dispositivos reais.
+- Nenhum SQL financeiro foi modificado.
