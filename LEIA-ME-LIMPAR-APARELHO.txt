@@ -1,0 +1,7 @@
+1. Execute SQL_LIMPAR_APARELHO_MOTOBOY.sql no Supabase SQL Editor.
+2. Publique os arquivos do painel no GitHub Pages, mantendo config.js do ambiente correto.
+3. Abra Motoboys > Limpar aparelho > confirme. Somente proprietário pode usar.
+4. O motoboy deve solicitar nova aprovação no aplicativo.
+5. A função não altera financeiro, rotas, histórico ou senha.
+ATENÇÃO: Se o aplicativo conservar uma sessão antiga e impedir nova solicitação,
+será necessário resolver a sessão local antes de pedir a nova aprovação.

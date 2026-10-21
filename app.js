@@ -78,7 +78,7 @@ function render(){if(state.page==='financeiro')renderFinance();const today=brDat
 const term=$('orderSearch').value.toLowerCase(),filter=$('orderFilter').value;const filtered=state.pedidos.filter(p=>(!filter||p.status===filter)&&[p.cliente_nome,p.numero,p.endereco].some(v=>String(v||'').toLowerCase().includes(term)));$('ordersTable').innerHTML=table(filtered,true);$('routeStore').innerHTML=options(state.lojas);$('orderStore').innerHTML=options(state.lojas);if($('outsideStore'))$('outsideStore').innerHTML=options(state.lojas);const previousWaStore=$('waStore').value;$('waStore').innerHTML=options(state.lojas);if(previousWaStore&&state.lojas.some(s=>s.id===previousWaStore))$('waStore').value=previousWaStore;const selectedDriver=$('routeDriver').value;const eligibleDrivers=state.motoboys.filter(m=>m.ativo&&driverLive(driverLoc(m)));$('routeDriver').innerHTML='<option value="">Selecione um motoboy online (pode estar em rota)</option>'+options(eligibleDrivers);if(eligibleDrivers.some(m=>m.id===selectedDriver))$('routeDriver').value=selectedDriver;const store=$('routeStore').value||$('routeStore').dataset.selected||state.lojas[0]?.id;if(store&&state.lojas.some(x=>x.id===store))$('routeStore').value=store;
 const available=state.pedidos.filter(p=>p.status==='pendente'&&p.loja_id===$('routeStore').value);state.selected=new Set([...state.selected].filter(id=>available.some(p=>p.id===id)));$('routeCandidates').innerHTML=available.map(p=>`<label class="candidate"><input type="checkbox" data-pick="${esc(p.id)}" ${state.selected.has(p.id)?'checked':''}><div><b>#${esc(p.numero||p.id.slice(0,6))} — ${esc(p.cliente_nome)}</b><small>${esc(p.endereco)}</small></div></label>`).join('')||'<div class="empty">Não há pedidos pendentes nesta loja.</div>';$('selectedCount').textContent=`${state.selected.size} pedido(s) selecionado(s)`;$('deleteSelectedOrders').disabled=state.selected.size===0;updateOptimizationUI();$('routesList').innerHTML=state.rotas.map(r=>{const d=state.motoboys.find(m=>m.id===r.motoboy_id);return `<div class="route-item"><div><b>Rota #${r.id.slice(0,8)}</b><small>🏍️ ${esc(d?.nome||'Sem motoboy')} · ${state.paradas.filter(p=>p.rota_id===r.id).length} pedidos · ${fmt(r.criada_em)}</small></div>${badge(r.status)}<div class="route-manage"><button type="button" class="secondary" data-route-detail="${esc(r.id)}">${['enviada','em_andamento'].includes(r.status)?'Ver rota':'Detalhes'}</button></div></div>`}).join('')||'<div class="empty">Nenhuma rota enviada.</div>';
 $('driverActions').classList.toggle('hidden',state.papel!=='proprietario');
-$('driversList').innerHTML=state.motoboys.map(m=>{const loc=driverLoc(m),live=driverLive(loc),routes=activeDriverRoutes(m);return `<div class="panel driver-card"><div class="driver-card-head"><span class="driver-moto" aria-hidden="true">🏍️</span><div><h2>${esc(m.nome)}</h2><span class="driver-presence ${live?'is-online':'is-offline'}"><span class="presence-dot"></span>${driverStatus(loc)}</span></div></div><p class="muted">${validLoc(loc)?`Último GPS: há ${gpsAgeLabel(loc)} · ${fmt(loc.atualizado_em)}`:'Ainda não enviou localização'}</p><p>${routes.length} rota(s) aberta(s) · Usuário: <strong>${esc(m.nome_usuario||'Não definido')}</strong></p><div class="driver-buttons"><button type="button" class="primary" data-driver-focus="${esc(m.id)}" ${validLoc(loc)?'':'disabled'}>📍 Ver no mapa</button>${['proprietario','gerente'].includes(state.papel)?`<button type="button" class="secondary" data-driver-reset-authorize="${esc(m.id)}">Redefinir senha</button>`:''}${state.papel==='proprietario'?`<button type="button" class="secondary" data-driver-toggle="${esc(m.id)}">${m.ativo?'Desativar':'Reativar'}</button><button type="button" class="secondary" data-driver-delete="${esc(m.id)}">Excluir definitivamente</button>`:''}</div></div>`}).join('')||'<div class="empty">Nenhum motoboy cadastrado.</div>' ;renderCentral();renderMap()}
+$('driversList').innerHTML=state.motoboys.map(m=>{const loc=driverLoc(m),live=driverLive(loc),routes=activeDriverRoutes(m);return `<div class="panel driver-card"><div class="driver-card-head"><span class="driver-moto" aria-hidden="true">🏍️</span><div><h2>${esc(m.nome)}</h2><span class="driver-presence ${live?'is-online':'is-offline'}"><span class="presence-dot"></span>${driverStatus(loc)}</span></div></div><p class="muted">${validLoc(loc)?`Último GPS: há ${gpsAgeLabel(loc)} · ${fmt(loc.atualizado_em)}`:'Ainda não enviou localização'}</p><p>${routes.length} rota(s) aberta(s) · Usuário: <strong>${esc(m.nome_usuario||'Não definido')}</strong></p><div class="driver-buttons"><button type="button" class="primary" data-driver-focus="${esc(m.id)}" ${validLoc(loc)?'':'disabled'}>📍 Ver no mapa</button>${['proprietario','gerente'].includes(state.papel)?`<button type="button" class="secondary" data-driver-reset-authorize="${esc(m.id)}">Redefinir senha</button>`:''}${state.papel==='proprietario'?`<button type="button" class="secondary" data-driver-clear-device="${esc(m.id)}">Limpar aparelho</button><button type="button" class="secondary" data-driver-delete="${esc(m.id)}">Excluir definitivamente</button>`:''}</div></div>`}).join('')||'<div class="empty">Nenhum motoboy cadastrado.</div>' ;renderCentral();renderMap()}
 function renderCentral(){
  const host=$('centralRoutes');if(!host)return;
  const active=state.rotas.filter(r=>['enviada','em_andamento'].includes(r.status));
@@ -407,17 +407,17 @@ $('driversList').addEventListener('click',async e=>{
 
 // Gestão administrativa: as ações são validadas novamente no banco via RPC.
 $('driversList').addEventListener('click',async ev=>{
- const btn=ev.target.closest('[data-driver-toggle],[data-driver-delete]');if(!btn)return;
- const id=btn.dataset.driverToggle||btn.dataset.driverDelete;
+ const btn=ev.target.closest('[data-driver-clear-device],[data-driver-delete]');if(!btn)return;
+ const id=btn.dataset.driverClearDevice||btn.dataset.driverDelete;
  const m=state.motoboys.find(x=>x.id===id);
  if(!m||state.papel!=='proprietario')return toast('Apenas o proprietário pode gerenciar contas.',true);
  const permanent=!!btn.dataset.driverDelete;
- const action=permanent?'excluir':(m.ativo?'desativar':'reativar');
- const message=permanent?`EXCLUIR DEFINITIVAMENTE ${m.nome}?\n\nEsta ação não tem volta. O sistema tentará apagar o cadastro e o login vinculado. Se houver rotas, financeiro, outros vínculos ou dados que precisem ser preservados, a exclusão será bloqueada. Nesse caso, use Desativar.`:`${m.ativo?'Desativar':'Reativar'} ${m.nome}?`;
+ const action=permanent?'excluir':'limpar_aparelho';
+ const message=permanent?`EXCLUIR DEFINITIVAMENTE ${m.nome}?\n\nEsta ação não tem volta. O sistema tentará apagar o cadastro e o login vinculado. Se houver rotas, financeiro, outros vínculos ou dados que precisem ser preservados, a exclusão será bloqueada. Nesse caso, procure suporte antes de excluir.`:`LIMPAR O APARELHO DE ${m.nome}?\n\nO aparelho atual perderá o acesso. O motoboy precisará solicitar uma nova autorização. Cadastro, senha, entregas e financeiro serão preservados. Deseja continuar?`;
  if(!confirm(message))return;
  if(permanent&&prompt(`Para confirmar, digite EXCLUIR:`)!=='EXCLUIR')return;
  btn.disabled=true;
- try{const {error}=await sb.rpc('rota_gerenciar_conta_motoboy',{p_empresa:state.empresa.id,p_motoboy:id,p_acao:action});if(error)throw error;toast(action==='excluir'?'Cadastro e login excluídos, quando vinculados.':action==='desativar'?'Motoboy desativado.':'Motoboy reativado.');await fetchAll()}
+ try{const rpc=permanent?'rota_gerenciar_conta_motoboy':'rota_limpar_aparelho_motoboy';const args=permanent?{p_empresa:state.empresa.id,p_motoboy:id,p_acao:action}:{p_empresa:state.empresa.id,p_motoboy:id};const {data,error}=await sb.rpc(rpc,args);if(error)throw error;if(data?.ok===false)throw new Error(data?.erro||'Operação recusada pelo servidor');toast(permanent?'Cadastro e login excluídos, quando vinculados.':'Aparelho desvinculado. O motoboy pode solicitar nova aprovação.');await fetchAll()}
  catch(e){toast('Operação não concluída: '+errorText(e),true)}finally{btn.disabled=false}
 });
 $('copyDriverCode').onclick=async()=>{try{await navigator.clipboard.writeText($('driverCode').textContent);toast('Código copiado.')}catch(e){toast('Selecione e copie o código manualmente.',true)}};
@@ -513,6 +513,28 @@ async function loadFinance(){
   .eq('empresa_id',state.empresa.id).order('registrado_em',{ascending:false}).limit(10000);
  if(ledgerError){toast('Lançamentos financeiros: '+ledgerError.message,true)}
  else {
+  // O financeiro oficial define a classificacao do pedido remoto, inclusive
+  // quando o historico Android ainda guarda delivered=true. Nao modificar
+  // valores, datas ou contagem das corridas ja presentes no historico.
+  const officialByOrder=new Map();
+  for(const f of ledger||[]){
+   if(!f.pedido_id)continue;
+   const key=`${f.motoboy_id}|${f.pedido_id}`;
+   if(!officialByOrder.has(key))officialByOrder.set(key,f);
+  }
+  for(const item of state.finance){
+   if(!item.pedido_id)continue;
+   const f=officialByOrder.get(`${item.motoboy_id}|${item.pedido_id}`);
+   if(!f)continue;
+   const result=String(f.resultado||'').toLowerCase();
+   if(result==='cancelado_pago'){
+    item.tipo='cancelada';
+    item.resultado='Cancelada remunerada';
+   }else if(result==='entregue' && item.tipo==='cancelada'){
+    item.tipo='normal';
+    item.resultado='Entrega normal';
+   }
+  }
   const known=new Set(state.finance.filter(x=>x.pedido_id).map(x=>`${x.motoboy_id}|${x.pedido_id}`));
   const ledgerSeen=new Set();
   const ordersById=new Map(state.pedidos.map(p=>[String(p.id),p]));
