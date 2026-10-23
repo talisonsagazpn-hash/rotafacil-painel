@@ -1,0 +1,9 @@
+1. Faca backup do banco Supabase antes de qualquer exclusao.
+2. Execute o SQL escrito na conversa; copia em SQL_EXCLUSAO_DEFINITIVA_MASTER.sql.
+3. Entre no painel com a conta MASTER autorizada.
+4. Pedidos > Ver rota > Excluir definitivamente (MASTER).
+5. Confirme e digite o PIN. Teste somente com pedido de teste ja finalizado.
+6. Rotas ativas e pedidos em rota sao bloqueados por seguranca.
+7. A exclusao e irreversivel. A funcao NAO remove a rota em si.
+8. Nao publique antes de testar em homologacao/copia do banco.
+9. Para desativar a funcao temporaria: REVOKE EXECUTE ON FUNCTION public.rota_master_excluir_pedido(uuid,uuid,text) FROM authenticated;

@@ -3,6 +3,7 @@ import {SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY} from './config.js';
 const sb=createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,{auth:{persistSession:true,autoRefreshToken:true}});
 const $=id=>document.getElementById(id);const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let accessRequests=[];
+let masterExclusaoHabilitada=false;
 let removedPedidoIds=new Set();
 let state={user:null,empresa:null,lojas:[],motoboys:[],pedidos:[],rotas:[],paradas:[],localizacoes:[],page:'inicio',finance:[],selected:new Set(),map:null,markers:[],routeLines:[],focusDriver:null,autoFit:true,optimized:null,roadCache:new Map(),roadPending:new Set()};
 const statusName={pendente:'Pendente',em_rota:'Em rota',entregue:'Entregue',cancelado:'Cancelado',rascunho:'Rascunho',enviada:'Enviada',em_andamento:'Em andamento',concluida:'Concluída',cancelada:'Cancelada'};
@@ -53,6 +54,8 @@ async function start(){
  $('userName').textContent=user.email||'Administrador';
  $('login').classList.add('hidden');$('app').classList.remove('hidden');
  await fetchAll();
+ masterExclusaoHabilitada=false;
+ try {const {data,error}=await sb.rpc('rota_master_pode_excluir');masterExclusaoHabilitada=!error&&data===true;}catch(_e){}
  await checkUpdateAdmin();
  if(!start.interval)start.interval=setInterval(()=>{if(state.user&&state.empresa)fetchAll()},5000);
 }
@@ -431,10 +434,24 @@ async function manageRoute(id,action){
  if(action==='detail'||action==='actions'){
   const editable=['enviada','em_andamento'].includes(route.status);
   const items=stops.map((st,i)=>({st,p:state.pedidos.find(p=>p.id===st.pedido_id)})).filter(x=>x.p);
-  const body=items.map(({st,p},i)=>`<div class="route-item"><div><b>${i+1}. #${esc(p.numero||'')} — ${esc(p.cliente_nome)}</b><small>${esc(p.endereco)} · ${esc(p.status)}</small></div>${editable&&p.status==='em_rota'?`<div class="route-manage"><button type="button" class="secondary" data-stop-confirm="${esc(st.id)}">Confirmar entrega</button><button type="button" class="secondary" data-stop-release="${esc(st.id)}">Retirar da rota</button><button type="button" class="secondary" data-stop-unpaid="${esc(st.id)}">Cancelar sem pagar</button><button type="button" class="secondary" data-stop-cancel="${esc(st.id)}">Cancelar e remunerar R$ 10</button></div>`:''}</div>`).join('');
+  const body=items.map(({st,p},i)=>`<div class="route-item"><div><b>${i+1}. #${esc(p.numero||'')} — ${esc(p.cliente_nome)}</b><small>${esc(p.endereco)} · ${esc(p.status)}</small></div>${editable&&p.status==='em_rota'?`<div class="route-manage"><button type="button" class="secondary" data-stop-confirm="${esc(st.id)}">Confirmar entrega</button><button type="button" class="secondary" data-stop-release="${esc(st.id)}">Retirar da rota</button><button type="button" class="secondary" data-stop-unpaid="${esc(st.id)}">Cancelar sem pagar</button><button type="button" class="secondary" data-stop-cancel="${esc(st.id)}">Cancelar e remunerar R$ 10</button></div>`:''}${masterExclusaoHabilitada?`<div class="route-manage"><button type="button" class="secondary" style="border-color:#a63838;color:#c44" data-master-excluir="${esc(p.id)}">Excluir definitivamente (MASTER)</button></div>`:''}</div>`).join('');
   const old=document.getElementById('routeDetailModal');if(old)old.remove();
   const dlg=document.createElement('dialog');dlg.id='routeDetailModal';dlg.innerHTML=`<div style="padding:20px;min-width:min(520px,90vw);max-height:75vh;overflow:auto"><h3>Rota #${esc(id.slice(0,8))}</h3><p>${esc(route.status)} · ${esc(state.motoboys.find(m=>m.id===route.motoboy_id)?.nome||'—')}</p><p class="muted">${editable?'Selecione uma ação somente no pedido desejado.':'Histórico da rota — somente consulta.'}</p>${body}${editable?`<div class="route-bottom-actions"><button type="button" class="secondary" id="releaseWholeRoute">Retirar rota inteira</button></div>`:''}<p><button type="button" id="closeRouteDetail">Fechar</button></p></div>`;document.body.appendChild(dlg);dlg.showModal();dlg.querySelector('#closeRouteDetail').onclick=()=>dlg.close();dlg.addEventListener('close',()=>dlg.remove());
   if(editable){dlg.querySelector('#releaseWholeRoute').onclick=()=>{dlg.close();manageRoute(id,'release')};}
+  if(masterExclusaoHabilitada)dlg.addEventListener('click',async e=>{
+   const b=e.target.closest('[data-master-excluir]');if(!b)return;
+   const pedidoId=b.dataset.masterExcluir;
+   const pedido=state.pedidos.find(p=>p.id===pedidoId);
+   if(!pedido)return;
+   if(!confirm(`EXCLUSÃO DEFINITIVA do pedido #${pedido.numero||''} — ${pedido.cliente_nome}?\n\nEssa ação é irreversível e apaga registros vinculados. Confira que é um pedido de TESTE.`))return;
+   const pin=prompt('Digite o código MASTER de quatro dígitos para confirmar:');
+   if(pin===null)return;
+   if(!/^\d{4}$/.test(pin)){toast('O código deve conter quatro dígitos.',true);return;}
+   b.disabled=true;
+   const {data,error}=await sb.rpc('rota_master_excluir_pedido',{p_empresa_id:state.empresa.id,p_pedido_id:pedidoId,p_pin:pin});
+   if(error||!data?.ok){toast('Exclusão não realizada: '+(error?errorText(error):data?.mensagem||'Acesso negado'),true);b.disabled=false;return;}
+   dlg.close();toast('Pedido de teste excluído definitivamente.');await fetchAll();
+  });
   if(editable)dlg.addEventListener('click',async e=>{
    const b=e.target.closest('[data-stop-release],[data-stop-cancel],[data-stop-unpaid],[data-stop-confirm]');if(!b)return;
    const stopId=b.dataset.stopRelease||b.dataset.stopCancel||b.dataset.stopUnpaid||b.dataset.stopConfirm;
